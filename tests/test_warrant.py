@@ -413,3 +413,55 @@ def test_badge_and_live_report(rec):
     observe(rec, "acc=0.5")
     page = report.html(rec, live=True)
     assert "http-equiv=refresh" in page and "Latest evidence captured" in page
+
+
+def test_stats_math_matches_reference_values():
+    from warrant import stats
+    assert round(stats.p_t(2.10, 28), 4) == 0.0449
+    assert round(stats.p_f(4.41, 1, 28), 4) == 0.0449
+    assert round(stats.p_chi2(3.84, 1), 3) == 0.050
+    assert round(stats.p_chi2(30, 20), 4) == 0.0699
+    assert round(stats.p_z(1.96), 3) == 0.050
+    assert round(stats.p_t(1.0, 1), 4) == 0.5
+
+
+def test_statcheck_and_grim():
+    from warrant import stats
+    txt = ("t(28) = 2.10, p = .04. t(28) = 1.20, p < .05. chi2(1) = 3.84, p = .05. "
+           "z = 2.5, p < .001. r(28) = .37, p = .04.")
+    got = {r["text"]: (r["consistent"], r["gross"]) for r in stats.statcheck(txt)}
+    assert got["t(28) = 2.10, p = .04"] == (True, False)
+    assert got["t(28) = 1.20, p < .05"] == (False, True)   # p is really .24: decision flips
+    assert got["z = 2.5, p < .001"] == (False, False)      # wrong, but still significant
+    assert got["r(28) = .37, p = .04"] == (True, False)
+    assert [g["mean"] for g in stats.grim("M = 3.48, SD = 1.1, n = 25 and M = 3.47, n = 21")] == ["3.47"]
+
+
+def test_stop_blocks_inconsistent_statistics(rec, tmp_path, monkeypatch, capsys):
+    t = _transcript(tmp_path, _say("The effect was reliable, t(28) = 1.20, p < .05."))
+    out = _hook("stop", rec, {"transcript_path": t}, monkeypatch, capsys)
+    assert out and "recomputed p = 0.24" in out["reason"]
+
+
+def test_review_cards_and_quote_verification(monkeypatch, tmp_path):
+    from warrant import review, paper
+    monkeypatch.setattr(review, "CACHE", tmp_path)
+    cited = ("We train on ImageNet. Our residual network reaches 3.57% top-5 error on the test set, "
+             "winning first place. Deeper plain networks show higher training error, the degradation problem.")
+    monkeypatch.setattr(review, "source_text", lambda aid: {"abstract": "", "body": cited})
+    monkeypatch.setattr(review, "find_arxiv", lambda t, d=None: "1512.03385")
+    tex = (r"\begin{document} Residual networks reach 3.57\% top-5 error \cite{he}. "
+           r"They also report 1.23\% error on CIFAR \cite{he}. We find t(28) = 1.20, p < .05 in our study."
+           "\n" r"\begin{thebibliography}{1}\bibitem{he} K. He. \newblock Deep residual learning for image "
+           r"recognition. \newblock CVPR, 2016.\end{thebibliography}\end{document}")
+    res = review.run({"main.tex": tex}, check_refs=False)
+    checks = [f["check"] for f in res["findings"]]
+    assert "attributed number not in cited paper" in checks          # 1.23% is not in the source
+    assert any("decision flips" in c for c in checks)
+    assert any(f.get("number") == "1.23%" for f in res["findings"])
+    assert not any(f.get("number") == "3.57%" for f in res["findings"])
+    assert res["cards"] and "3.57% top-5 error" in res["cards"][0]["passages"][0]
+    v = review.verify(res["cards"], [
+        {"card": 1, "verdict": "supports", "quote": "reaches 3.57% top-5 error on the test set"},
+        {"card": 1, "verdict": "supports", "quote": "reaches 2.1% top-5 error on the test set"}])
+    assert [x["accepted"] for x in v] == [True, False]

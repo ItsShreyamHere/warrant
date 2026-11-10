@@ -207,6 +207,78 @@ def cmd_cites(a, rec):
         sys.exit(1)
 
 
+def cmd_review(a, rec):
+    from . import review
+    if a.verify:
+        vf = Path(a.verify)
+        cards_f = Path(a.cards) if a.cards else vf.with_name("cards.json")
+        if not cards_f.is_file():
+            raise SystemExit(f"cards not found: {cards_f} (pass --cards)")
+        res = review.verify(json.loads(cards_f.read_text(encoding="utf-8")),
+                            json.loads(vf.read_text(encoding="utf-8")))
+        for r in res:
+            mark = "OK " if r["accepted"] else "XX "
+            print(f"{mark}card {r.get('card')}: {r.get('verdict')}: {r['why']}")
+        bad = [r for r in res if not r["accepted"]]
+        tally = {v: sum(r["accepted"] and r["verdict"] == v for r in res) for v in sorted(review.VERDICTS)}
+        print(", ".join(f"{n} {v}" for v, n in tally.items()) + f"; {len(bad)} rejected")
+        return 1 if bad else 0
+    if not a.target:
+        raise SystemExit("give a paper: arXiv id, DOI, URL, or a folder/.tex file")
+    src = a.target
+    if Path(src).is_dir():
+        files = {str(f): f.read_text(encoding="utf-8", errors="replace")
+                 for f in Path(src).rglob("*") if f.suffix.lower() in (".tex", ".bbl", ".bib")}
+        name = Path(src).name
+    elif Path(src).is_file():
+        files = {src: Path(src).read_text(encoding="utf-8", errors="replace")}
+        name = Path(src).stem
+    else:
+        doi = cites._DOI.search(urllib.parse.unquote(src))
+        arx = re.search(r"(\d{4}\.\d{4,5})", src)
+        aid = review.find_arxiv(None, cites.clean_doi(doi.group(1))) if doi else (arx.group(1) if arx else None)
+        if not aid:
+            raise SystemExit("could not find this paper's LaTeX source (needs an arXiv version); "
+                             "for any DOI, `warrant audit` still checks its references")
+        print(f"reading arXiv:{aid} ...", file=sys.stderr)
+        files = audit.fetch_arxiv_source(aid)
+        name = aid
+    res = review.run(files, a.max_sources, a.max_cards, not a.no_refs,
+                     log=lambda m: print(m, file=sys.stderr))
+    out = Path(a.output or Path("warrant-review") / name.replace("/", "_"))
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "report.md").write_text(review.markdown(name, res), encoding="utf-8")
+    (out / "cards.json").write_text(json.dumps(res["cards"], indent=1), encoding="utf-8")
+    st = res["stats"]
+    red = [x for x in res["findings"] if x["level"] == "red"]
+    for x in res["findings"]:
+        tag = "XX " if x["level"] == "red" else "?? "
+        print(f"{tag}{x['check']}{' [' + x['ref'] + ']' if x.get('ref') else ''}"
+              f"{' ' + x['number'] if x.get('number') else ''}: {x['detail']}")
+    print(f"\n{st['references']} references, {st['citing_sentences']} citing sentences, "
+          f"{st['sources_read']} cited papers read, {st['cards']} evidence cards -> {out / 'report.md'}")
+    return 1 if red else 0
+
+
+def cmd_stats(a, rec):
+    from . import paper, stats
+    text = Path(a.file).read_text(encoding="utf-8", errors="replace")
+    if a.file.endswith(".tex"):
+        text = paper.tex_to_text(paper.strip_comments(text))
+    rows = stats.statcheck(text)
+    bad = 0
+    for r in rows:
+        tag = "OK " if r["consistent"] else ("XX " if r["gross"] else "?? ")
+        bad += not r["consistent"]
+        note = "" if r["consistent"] else ("  DECISION FLIPS at .05" if r["gross"] else "  inconsistent")
+        print(f"{tag}{r['text']}  ->  recomputed p = {r['computed_p']}{note}")
+    for g in stats.grim(text):
+        bad += 1
+        print(f"??  GRIM: {g['text']}  ->  {g['detail']}")
+    print(f"{len(rows)} tests recomputed, {bad} problems")
+    return 1 if bad else 0
+
+
 def cmd_dashboard(a, rec):
     from .dashboard import serve
     if not rec.exists():
@@ -334,6 +406,20 @@ def main(argv=None) -> int:
     s.add_argument("--badge", help="also write an SVG status badge to this path")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_audit)
+
+    s = sub.add_parser("review", help="referee report: claims vs. cited papers, numbers, stats (arXiv/DOI/LaTeX)")
+    s.add_argument("target", nargs="?")
+    s.add_argument("--max-sources", type=int, default=25, help="cited papers to read in full (most-cited first)")
+    s.add_argument("--max-cards", type=int, default=40)
+    s.add_argument("--no-refs", action="store_true", help="skip the reference-existence check")
+    s.add_argument("-o", "--output", help="output folder (default warrant-review/<paper>)")
+    s.add_argument("--verify", help="verdicts.json to check against the cards (quotes must be verbatim)")
+    s.add_argument("--cards", help="cards.json (default: next to the verdicts file)")
+    s.set_defaults(fn=cmd_review)
+
+    s = sub.add_parser("stats", help="recompute every reported p-value (statcheck) and check means (GRIM)")
+    s.add_argument("file", help=".md / .txt / .tex")
+    s.set_defaults(fn=cmd_stats)
 
     s = sub.add_parser("dashboard", help="live local page of the session (refreshes every 3 s)")
     s.add_argument("--port", type=int, default=8765)

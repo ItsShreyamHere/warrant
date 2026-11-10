@@ -169,6 +169,11 @@ def stop(inp: dict, rec: Record) -> dict | None:
     if untraced:
         shown = ", ".join(untraced[:MAX_LIST]) + (" ..." if len(untraced) > MAX_LIST else "")
         problems.append(f"numbers that no command output, file, or record entry produced: {shown}")
+    from .stats import statcheck
+    wrong = [r for r in statcheck(text) if not r["consistent"]]
+    if wrong:
+        problems.append("statistics whose p-value does not follow from the test statistic: " +
+                        "; ".join(f"{r['text']} (recomputed p = {r['computed_p']})" for r in wrong[:MAX_LIST]))
     bad = [r for r in cites.check_text(text, rec.dir) if r["status"] == "red"]
     if bad:
         problems.append("citations that do not resolve or do not match: " +
