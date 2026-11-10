@@ -368,3 +368,48 @@ def test_audit_refs_from_doi(monkeypatch):
     monkeypatch.setattr(cites, "_get", lambda url, **kw: (200, json.dumps({"message": {}})))
     with pytest.raises(ValueError, match="did not deposit"):
         audit.refs_from_doi("10.1/x")
+
+
+def test_proof_receipts(rec, tmp_path):
+    from warrant import proofs
+    good = tmp_path / "ok.py"
+    good.write_text("assert 2 + 2 == 4\n")
+    bad = tmp_path / "bad.py"
+    bad.write_text("assert 2 + 2 == 5, 'arithmetic'\n")
+    empty = tmp_path / "none.py"
+    empty.write_text("x = 1\n")
+    lean = tmp_path / "t.lean"
+    lean.write_text("theorem t : 1 = 1 := by\n  sorry\n")
+    assert proofs.check_proof(str(good))["status"] == "green"
+    assert proofs.check_proof(str(bad))["status"] == "red"
+    assert proofs.check_proof(str(empty))["status"] == "yellow"
+    assert "sorry" in proofs.check_proof(str(lean))["why"]
+    cid = claim(rec, "this proves addition works")
+    main(["evidence", str(cid), "--type", "proof", "--ref", str(good)])
+    assert status(rec, cid)["status"] == "green"
+    good.write_text("assert True\n")
+    assert status(rec, cid)["status"] == "red"  # proof edited after checking
+
+
+def test_drift_warns_once_after_three_off_topic_replies(rec, tmp_path, monkeypatch, capsys):
+    rec.append("question", text="Does label smoothing improve calibration?", hypothesis=None)
+    off = "Here is a long discussion of the office coffee machine and its espresso settings. " * 6
+    t = _transcript(tmp_path, _say(off))
+    notes = []
+    for _ in range(4):
+        out = _hook("prompt", rec, {"prompt": "next", "transcript_path": t}, monkeypatch, capsys)
+        notes.append("did not touch" in out["hookSpecificOutput"]["additionalContext"])
+    assert notes == [False, False, True, False]
+    on = "Label smoothing changed calibration error noticeably in this run. " * 6
+    t2 = _transcript(tmp_path, _say(on))
+    out = _hook("prompt", rec, {"prompt": "next", "transcript_path": t2}, monkeypatch, capsys)
+    assert "did not touch" not in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_badge_and_live_report(rec):
+    assert "84/84 verified" in report.badge_svg(84, 0, 0) and "#1f7a4d" in report.badge_svg(84, 0, 0)
+    assert "2 not found" in report.badge_svg(80, 2, 2)
+    rec.append("question", text="q", hypothesis=None)
+    observe(rec, "acc=0.5")
+    page = report.html(rec, live=True)
+    assert "http-equiv=refresh" in page and "Latest evidence captured" in page

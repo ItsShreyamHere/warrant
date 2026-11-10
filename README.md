@@ -84,6 +84,8 @@ Each reference is checked against **doi.org, arXiv, OpenAlex and Crossref**. For
 
 warrant only flags a reference when no registry has ever heard of its title. A broken DOI on a real paper comes back "unchecked", never "fake". Run it on your own paper before a reviewer does.
 
+> ⭐ **Did it catch something?** [Star the repo](https://github.com/ItsShreyamHere/warrant/stargazers) so the next researcher finds it before their reviewer does.
+
 ---
 
 ## What it does inside Claude Code
@@ -116,7 +118,30 @@ DOIs, arXiv ids and quoted paper titles in Claude's replies are resolved live. T
 
 ### 🧭 The question stays in view
 
-Your research question rides along every turn. Hypotheses are **pre-registered**, and code decides the verdict. Refuted ideas go to a **graveyard**, and Claude is warned when it tries to revive one.
+Your research question rides along every turn. If three replies in a row drift off it, Claude is told to say so or steer back. Hypotheses are **pre-registered**, and code decides the verdict. Refuted ideas go to a **graveyard**, and Claude is warned when it tries to revive one.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### ∎ "Proves" needs a proof
+
+A claim that something is proven needs a proof that a checker accepts: **Lean 4** (`sorry` doesn't count) or a **SymPy** script whose asserts hold. Edit the proof afterwards and the claim turns red.
+
+</td>
+<td width="33%" valign="top">
+
+### 📊 Wording matches evidence
+
+"Significantly" needs 3+ seeds and p < 0.05. "Outperforms" needs 3+ seeds or a passed pre-registered test. Strong results hedged into "may slightly help" get flagged as understated.
+
+</td>
+<td width="33%" valign="top">
+
+### 📡 Watch it live
+
+`warrant dashboard` opens a local page that updates every 3 seconds. It shows every claim with its verdict, the graveyard, and each piece of evidence as it is captured.
 
 </td>
 </tr>
@@ -135,6 +160,12 @@ each number, fix or remove the citation, or label a number as an estimate with '
 ```
 
 Claude then runs the experiment, or marks the number as an estimate, and fixes the citation. You get a write-up you can trust without re-checking it line by line.
+
+<div align="center">
+
+**If you've ever caught an AI inventing a number, [⭐ star warrant](https://github.com/ItsShreyamHere/warrant). It's how other researchers find it.**
+
+</div>
 
 ---
 
@@ -221,7 +252,23 @@ $ warrant result 1 --observed val_acc=0.806 --baseline val_acc=0.809
 claim #1: refuted                                                      # -> graveyard
 ```
 
-Wording is checked against evidence too. "Significantly" needs 3+ seeds and p < 0.05. "Proves" needs a proof. Strong results hedged into "may slightly help" get a note.
+Proofs work the same way:
+
+```
+$ warrant claim "the bound in Lemma 2 is tight"
+$ warrant evidence 2 --type proof --ref proofs/Lemma2.lean     # Lean 4; `sorry` = rejected
+$ warrant evidence 2 --type proof --ref checks/lemma2_sympy.py # or a SymPy script with asserts
+```
+</details>
+
+<details>
+<summary><b>Live dashboard</b></summary>
+
+```bash
+warrant dashboard          # http://127.0.0.1:8765, refreshes every 3 s, local only
+```
+
+It shows the question, every claim with its verdict and reasons, the graveyard, the latest evidence captured, and whether the record's hash chain is intact.
 </details>
 
 <details>
@@ -238,7 +285,12 @@ jobs:
       - uses: ItsShreyamHere/warrant@v0
         with:
           files: refs.bib
+          badge: .github/references.svg   # optional status badge, e.g. references | 84/84 verified
 ```
+
+Locally: `warrant audit refs.bib --badge references.svg`.
+
+<img src="docs/badge-example.svg" alt="references: 84/84 verified">
 </details>
 
 <details>
@@ -255,6 +307,9 @@ jobs:
 | `warrant predict N JSON` / `warrant result N --observed k=v` | pre-register, then let code decide |
 | `warrant evidence N --log F --metric k=v [--seeds S --p P]` | attach run evidence (hashed) |
 | `warrant evidence N --type cite --ref ID [--quote Q]` | attach a citation (resolved, quote checked against the abstract) |
+| `warrant evidence N --type proof --ref F.lean\|F.py` | attach a proof (Lean 4 or SymPy, checked by running it) |
+| `warrant dashboard` | live local view of the session |
+| `warrant audit X --badge F.svg` | also write a status badge |
 | `warrant kill IDEA` / `warrant retract N` / `warrant status` | graveyard, withdraw, overview |
 </details>
 
@@ -267,9 +322,15 @@ jobs:
 - Quote checks use the abstract. A quote that only appears in the full text comes back "unverified", never "fake".
 - Whole numbers ("15 minutes") are not traced unless `WARRANT_STRICT=1`, to avoid false alarms.
 
-**Roadmap:** Lean 4 / SymPy proof receipts · drift detection beyond the question anchor · live dashboard · CI badge.
+---
 
 <div align="center">
+
+### ⭐ Star warrant if you want research AI you can actually cite.
+
+Every star helps one more lab find it before its next submission.
+
+[![Star on GitHub](https://img.shields.io/github/stars/ItsShreyamHere/warrant?style=social)](https://github.com/ItsShreyamHere/warrant/stargazers)
 
 MIT licensed · built for researchers who'd rather be right than impressive
 

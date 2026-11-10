@@ -7,6 +7,9 @@ inputs:
   files:
     description: Space-separated .bib / .bbl / .tex files to audit
     required: true
+  badge:
+    description: Write an SVG status badge here (e.g. .github/references.svg); commit or upload it in a later step
+    default: ""
   fail-on-flag:
     description: Fail the job when any reference is not found ("true"/"false")
     default: "true"
@@ -22,11 +25,15 @@ runs:
         WARRANT_PATH: ${{ github.action_path }}
         FILES: ${{ inputs.files }}
         FAIL: ${{ inputs.fail-on-flag }}
+        BADGE: ${{ inputs.badge }}
       run: |
         status=0
         for f in $FILES; do
           echo "::group::warrant audit $f"
-          python "$WARRANT_PATH/bin/warrant.py" audit "$f" --all | tee -a "$RUNNER_TEMP/warrant.txt" || status=1
+          extra=""
+          if [ -n "$BADGE" ]; then extra="--badge $BADGE"; fi
+          # GitHub runs bash with -eo pipefail: a failed audit fails the pipeline, caught here
+          python "$WARRANT_PATH/bin/warrant.py" audit "$f" --all $extra | tee -a "$RUNNER_TEMP/warrant.txt" || status=1
           echo "::endgroup::"
         done
         { echo '## warrant reference audit'; echo '```'; cat "$RUNNER_TEMP/warrant.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

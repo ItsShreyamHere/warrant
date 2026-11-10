@@ -74,6 +74,12 @@ def evaluate(claim: dict) -> dict:
             s, why = _run_check(ev)
             verified |= s == GREEN
             reasons += [(s, w) for w in why]
+        elif t == "proof" and ev.get("check"):
+            s, why = ev["check"]["status"], ev["check"]["why"]
+            if s == GREEN and ev.get("ref") and sha256_file(ev["ref"]) != ev["check"].get("sha"):
+                s, why = RED, "proof file changed after it was checked; re-attach it"
+            verified |= s == GREEN
+            reasons += [] if s == GREEN else [(s, f"proof {ev.get('ref')}: {why}")]
         elif t == "cite" and ev.get("check"):
             s, why = ev["check"]["status"], ev["check"]["why"]
             verified |= s == GREEN
@@ -98,8 +104,9 @@ def evaluate(claim: dict) -> dict:
     text, seeds, p = claim["text"], _seeds(claim), _pval(claim)
     if _SIGNIF.search(text) and (seeds < 3 or p is None or p >= 0.05):
         reasons.append((RED, f"says 'significant' but evidence has {seeds} seed(s), p={p}"))
-    if _PROOF.search(text) and not any(e.get("type") == "proof" for e in claim["evidence"]):
-        reasons.append((RED, "says 'proves' with no proof evidence"))
+    if _PROOF.search(text) and not any(e.get("type") == "proof" and (e.get("check") or {}).get("status") == GREEN
+                                       for e in claim["evidence"]):
+        reasons.append((RED, "says 'proves' with no checked proof"))
     if _WIN.search(text) and verified and seeds < 3 and not claim.get("result"):
         reasons.append((RED, f"claims a win on {seeds} seed(s); need >=3 or a pre-registered predicate"))
     if _ABSOLUTE.search(text):

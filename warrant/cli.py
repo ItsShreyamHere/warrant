@@ -64,6 +64,12 @@ def cmd_evidence(a, rec):
             raise SystemExit(f"log not found: {a.log}")
         body.update(log=str(Path(a.log).resolve()), sha=sha, metrics=_kv(a.metric),
                     seeds=a.seeds, p=a.p, std=a.std)
+    elif a.type == "proof":
+        if not a.ref:
+            raise SystemExit("proof evidence needs --ref proof.lean or check.py")
+        from .proofs import check_proof
+        res = check_proof(a.ref)
+        body.update(ref=str(Path(a.ref).resolve()), check=res)
     elif a.type == "cite":
         if not a.ref:
             raise SystemExit("cite evidence needs --ref (DOI, arXiv id, or title)")
@@ -201,6 +207,13 @@ def cmd_cites(a, rec):
         sys.exit(1)
 
 
+def cmd_dashboard(a, rec):
+    from .dashboard import serve
+    if not rec.exists():
+        raise SystemExit("no warrant record here; run `warrant init` first")
+    serve(rec, a.port, not a.no_browser)
+
+
 def cmd_audit(a, rec):
     src = a.target
     doi = cites._DOI.search(urllib.parse.unquote(src))
@@ -225,6 +238,10 @@ def cmd_audit(a, rec):
     refs = audit.audit(refs)
     red = [r for r in refs if r.status == "red"]
     yellow = [r for r in refs if r.status == "yellow"]
+    if a.badge:
+        Path(a.badge).write_text(report.badge_svg(len(refs) - len(red) - len(yellow), len(yellow), len(red)),
+                                 encoding="utf-8")
+        print(f"wrote badge {a.badge}", file=sys.stderr)
     if a.json:
         print(json.dumps([r.__dict__ for r in refs], indent=1))
     else:
@@ -314,8 +331,14 @@ def main(argv=None) -> int:
     s = sub.add_parser("audit", help="check every reference in a paper (DOI, arXiv id, URL, or .bib/.bbl/.tex)")
     s.add_argument("target")
     s.add_argument("--all", action="store_true", help="also list references that could not be checked")
+    s.add_argument("--badge", help="also write an SVG status badge to this path")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_audit)
+
+    s = sub.add_parser("dashboard", help="live local page of the session (refreshes every 3 s)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--no-browser", action="store_true")
+    s.set_defaults(fn=cmd_dashboard)
 
     s = sub.add_parser("hook", help="Claude Code hook entry point")
     s.add_argument("name", choices=sorted(hooks.HANDLERS))
