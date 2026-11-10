@@ -465,3 +465,19 @@ def test_review_cards_and_quote_verification(monkeypatch, tmp_path):
         {"card": 1, "verdict": "supports", "quote": "reaches 3.57% top-5 error on the test set"},
         {"card": 1, "verdict": "supports", "quote": "reaches 2.1% top-5 error on the test set"}])
     assert [x["accepted"] for x in v] == [True, False]
+
+
+def test_statcheck_scan_regressions():
+    """False positives found by the arXiv scan (bench/scan_stats.py)."""
+    from warrant import stats
+    # scientific notation, as LaTeX becomes after tex_to_text: "4.7 × 10^ -5"
+    r = stats.statcheck("t(11) = -4.90 ; p = 4.7 × 10^ -4")
+    assert r and r[0]["consistent"]
+    assert stats.statcheck("z = 5.05, p = 4.4e-7")[0]["consistent"]
+    # unreadable layouts are skipped, never flagged
+    assert stats.statcheck("t(4)=18.76, p=4.8") == []
+    # Bonferroni-adjusted p-values are not errors in a paper that says it adjusts
+    txt = "We applied Bonferroni correction. t(16) = 2.64, p = .125 and t(16) = -0.48, p = 1.000"
+    assert all(x["consistent"] and x["adjusted"] for x in stats.statcheck(txt))
+    # ...but the same numbers without any correction stated are still flagged
+    assert not stats.statcheck("t(16) = 2.64, p = .125")[0]["consistent"]

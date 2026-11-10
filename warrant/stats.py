@@ -110,7 +110,12 @@ def p_r(r: float, df: float) -> float:
 # --- extraction --------------------------------------------------------------------
 
 _NUM = r"[-−–]?\s*\d*\.?\d+"
-_P = r"p\s*([<>=≤≥])\s*(\d*\.\d+|\d)"
+# p, optionally in scientific notation: p = 4.7 × 10^-5, p = 4.7e-5, p < 10^{-3}
+_P = (r"p\s*([<>=≤≥])\s*(\d*\.\d+|\d+)"
+      r"(?:\s*(?:×|x|\*|·)\s*10\s*\^?\s*\(?\s*([-−–]\s*\d+)|[eE]\s*([-−–]?\s*\d+))?")
+# reported p-values adjusted for multiple comparisons are larger than the raw p by design
+_CORRECTED = re.compile(r"bonferroni|holm|šid[aá]k|sidak|benjamini|hochberg|false discovery|\bfdr\b|"
+                        r"tukey|adjusted p|corrected p|p_?\{?adj|multiple comparison", re.I)
 _TESTS = [
     ("t", re.compile(rf"\bt\s*\(\s*(\d+(?:\.\d+)?)\s*\)\s*=\s*({_NUM})\s*[,;]\s*{_P}", re.I)),
     ("F", re.compile(rf"\bF\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)\s*=\s*({_NUM})\s*[,;]\s*{_P}")),
@@ -153,20 +158,22 @@ def _p_range(kind: str, args: list[float], stat_raw: str) -> tuple[float, float]
 def statcheck(text: str, alpha: float = 0.05) -> list[dict]:
     """Every APA-style test in `text`, with its recomputed p and a verdict."""
     out = []
+    corrected_paper = bool(_CORRECTED.search(text))
     for kind, rx in _TESTS:
         for m in rx.finditer(text):
             g = m.groups()
-            if kind == "F":
-                args, stat_raw, op, p_raw = [float(g[0]), float(g[1])], g[2], g[3], g[4]
-            elif kind == "z":
-                args, stat_raw, op, p_raw = [], g[0], g[1], g[2]
-            else:
-                args, stat_raw, op, p_raw = [float(g[0])], g[1], g[2], g[3]
+            op, p_raw, e1, e2 = g[-4:]
+            rest = g[:-4]
+            stat_raw = rest[-1]
+            args = [float(x) for x in rest[:-1]]
             if kind == "r" and abs(_f(stat_raw)) > 1:
                 continue
-            p_rep = float(p_raw)
+            exp = int(_f(e1 or e2)) if (e1 or e2) else 0
+            p_rep = float(p_raw) * 10 ** exp
+            if p_rep > 1:
+                continue  # not a p-value as parsed (layout we can't read); never guess
             lo, hi = _p_range(kind, args, stat_raw)
-            p_half = 0.5 * 10 ** -_dec(p_raw)
+            p_half = 0.5 * 10 ** (-_dec(p_raw) + exp)
             if op in "=":
                 ok = lo <= p_rep + p_half and hi >= p_rep - p_half
                 rep_sig = p_rep < alpha or (p_rep == alpha and False)
@@ -178,10 +185,17 @@ def statcheck(text: str, alpha: float = 0.05) -> list[dict]:
                 rep_sig = False
             comp_sig = hi < alpha if lo < alpha else False
             p_mid = (lo + hi) / 2
+            # reported p above the raw p in a paper that adjusts for multiple comparisons: an
+            # adjusted p-value, not an error (statcheck's best-known false positive)
+            adjusted = not ok and corrected_paper and p_rep > hi
+            if adjusted:
+                ok = True
             gross = (not ok) and (rep_sig != (p_mid < alpha))
-            out.append({"test": kind, "text": m.group(0).strip(), "reported_p": f"p {op} {p_raw}",
-                        "computed_p": round(p_mid, 4), "consistent": ok, "gross": gross and not ok,
-                        "comp_sig": comp_sig})
+            shown = p_raw + (f"e{exp}" if exp else "")
+            out.append({"test": kind, "text": m.group(0).strip(), "reported_p": f"p {op} {shown}",
+                        "computed_p": round(p_mid, 4) if p_mid >= 1e-4 else float(f"{p_mid:.2e}"),
+                        "consistent": ok, "gross": gross and not ok, "comp_sig": comp_sig,
+                        "adjusted": adjusted})
     return out
 
 
