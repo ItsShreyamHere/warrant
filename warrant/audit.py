@@ -58,9 +58,39 @@ def _ids(ref: Ref, text: str) -> None:
 
 def _title_without_newblock(body: str) -> str | None:
     """ACL/plain styles: `Authors. 2024. Title. Venue.` -> Title."""
-    t = _latex_to_text(body)
-    m = re.search(r"\b(?:19|20)\d{2}[a-z]?\.\s+(.+?[^A-Z])\.\s", t)
+    t = _latex_to_text(body) + " "
+    # "Authors. 2024. Title. Venue." / "Authors (2024) Title. Venue" / "Authors, 2024. Title."
+    m = re.search(r"\(?\b(?:19|20)\d{2}[a-z]?\)?[.,:]?\s+[\"“]?(.+?[^A-Z])[\"”]?[.?!]\s", t)
     return m.group(1).strip() if m and len(m.group(1)) >= 12 else None
+
+
+def refs_from_doi(doi: str) -> list[Ref]:
+    """A paper's reference list as deposited by its publisher with Crossref.
+    arXiv DOIs (10.48550/arXiv.*) go through the LaTeX source instead."""
+    m = re.match(r"10\.48550/arxiv\.(.+)$", doi, re.I)
+    if m:
+        return refs_from_files(fetch_arxiv_source(m.group(1)))
+    code, body = cites._get("https://api.crossref.org/works/" + urllib.parse.quote(doi, safe="/()"), timeout=30)
+    if code == 404:
+        raise ValueError(f"DOI {doi} is not registered with Crossref")
+    if code != 200:
+        raise ValueError(f"Crossref unreachable (HTTP {code})")
+    msg = json.loads(body)["message"]
+    deposited = msg.get("reference") or []
+    if not deposited:
+        raise ValueError("the publisher did not deposit this paper's reference list with Crossref; "
+                         "audit its .bib, .bbl or arXiv version instead")
+    out = []
+    for i, r in enumerate(deposited, 1):
+        raw = r.get("unstructured") or " ".join(
+            str(r[k]) for k in ("author", "year", "article-title", "volume-title", "journal-title") if r.get(k))
+        ref = Ref(key=r.get("key") or f"ref{i}", raw=raw[:300],
+                  title=r.get("article-title") or r.get("volume-title") or _title_without_newblock(raw),
+                  doi=cites.clean_doi(r["DOI"]) if r.get("DOI") else None)
+        if not ref.doi:
+            _ids(ref, raw)
+        out.append(ref)
+    return out
 
 
 def parse_bbl(text: str) -> list[Ref]:

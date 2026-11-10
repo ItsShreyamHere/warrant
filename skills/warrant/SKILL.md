@@ -83,7 +83,7 @@ If work drifts from the recorded question, tell the user in one line and ask: is
 ## 7. Checking papers and drafts
 
 ```bash
-warrant audit 1706.03762            # every reference in an arXiv paper (or refs.bib / main.bbl)
+warrant audit 10.1038/s41586-021-03819-2   # every reference in a paper: DOI, arXiv id, URL, or refs.bib / main.bbl
 warrant cites draft.md              # citations in a draft
 warrant trace draft.md --all        # where each number came from
 warrant report --draft draft.md     # HTML: numbers green (hover = source line) or red

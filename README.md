@@ -17,7 +17,7 @@
 <td align="center" width="25%"><h3>0 model calls</h3>every verdict is plain code<br><sub><a href="#how-it-works">how it works</a></sub></td>
 <td align="center" width="25%"><h3>4 registries</h3>doi.org · arXiv · OpenAlex · Crossref<br><sub>checked live, cached</sub></td>
 <td align="center" width="25%"><h3>~100 tokens</h3>per session; hooks add 0<br><sub>per <code>claude plugin details</code></sub></td>
-<td align="center" width="25%"><h3>1 command</h3>to audit any arXiv paper's references<br><sub><a href="#try-it-on-any-paper-first-10-seconds-no-setup">try it</a></sub></td>
+<td align="center" width="25%"><h3>1 command</h3>to audit any paper's references: DOI or arXiv<br><sub><a href="#try-it-on-any-paper-first-10-seconds-no-setup">try it</a></sub></td>
 </tr>
 </table>
 
@@ -66,7 +66,9 @@ Every number traced to a run or marked `~`. The citation resolves.
 
 ```bash
 pip install warrant-research
-warrant audit 1706.03762        # any arXiv id or URL, or your refs.bib / main.bbl
+warrant audit 10.1038/s41586-021-03819-2   # any DOI or doi.org link
+warrant audit 1706.03762                    # any arXiv id or link
+warrant audit refs.bib                      # or your own .bib / .bbl / .tex
 ```
 
 ```
@@ -78,7 +80,7 @@ XX  [fake2] Neural Gradient Folding for Self-Supervised Protein Design
 3 references: 1 verified, 0 unchecked, 2 not found anywhere
 ```
 
-Each reference is checked against **doi.org, arXiv, OpenAlex and Crossref**. The output above is from a test `.bib` with two planted fakes.
+Each reference is checked against **doi.org, arXiv, OpenAlex and Crossref**. For a DOI, warrant reads the reference list the publisher deposited with Crossref. Nature, Science, Elsevier, IEEE, ACM, Springer and most journals deposit one. For arXiv it reads the paper's LaTeX source. The output above is from a test `.bib` with two planted fakes.
 
 warrant only flags a reference when no registry has ever heard of its title. A broken DOI on a real paper comes back "unchecked", never "fake". Run it on your own paper before a reviewer does.
 
@@ -245,7 +247,7 @@ jobs:
 | command | does |
 |---|---|
 | `warrant init [QUESTION]` | turn warrant on for this project |
-| `warrant audit ARXIV_ID \| FILE` | check every reference in a paper or bibliography |
+| `warrant audit DOI \| ARXIV_ID \| FILE` | check every reference in a paper or bibliography |
 | `warrant cites FILE` / `warrant trace FILE` | check a draft's citations / numbers |
 | `warrant report [--html \| --draft FILE]` | every claim with its verdict, or a draft with every number marked |
 | `warrant question TEXT [--hypothesis H]` | set or change the research question |

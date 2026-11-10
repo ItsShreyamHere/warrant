@@ -1,6 +1,7 @@
 """`warrant` command line. Claude drives it through the skill; humans can too."""
 import argparse
 import re
+import urllib.parse
 import json
 import sys
 from pathlib import Path
@@ -202,16 +203,22 @@ def cmd_cites(a, rec):
 
 def cmd_audit(a, rec):
     src = a.target
-    m = re.search(r"(\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?/\d{7})", src)
-    if Path(src).is_file():
-        text = Path(src).read_text(encoding="utf-8", errors="replace")
-        files = {src: text}
-    elif m:
-        print(f"fetching arXiv:{m.group(1)} source ...", file=sys.stderr)
-        files = audit.fetch_arxiv_source(m.group(1))
-    else:
-        raise SystemExit("give an arXiv id/URL or a .bib/.bbl/.tex file")
-    refs = audit.refs_from_files(files)
+    doi = cites._DOI.search(urllib.parse.unquote(src))
+    arx = re.search(r"(\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?/\d{7})", src)
+    try:
+        if Path(src).is_file():
+            refs = audit.refs_from_files({src: Path(src).read_text(encoding="utf-8", errors="replace")})
+        elif doi:
+            d = cites.clean_doi(doi.group(1))
+            print(f"fetching the reference list of doi:{d} ...", file=sys.stderr)
+            refs = audit.refs_from_doi(d)
+        elif arx:
+            print(f"fetching arXiv:{arx.group(1)} source ...", file=sys.stderr)
+            refs = audit.refs_from_files(audit.fetch_arxiv_source(arx.group(1)))
+        else:
+            raise SystemExit("give a DOI, an arXiv id, a doi.org/arxiv.org URL, or a .bib/.bbl/.tex file")
+    except ValueError as e:
+        raise SystemExit(f"cannot audit {src}: {e}")
     if not refs:
         raise SystemExit("no references found")
     print(f"checking {len(refs)} references against doi.org, arXiv, OpenAlex, Crossref ...", file=sys.stderr)
@@ -304,7 +311,7 @@ def main(argv=None) -> int:
     s.add_argument("file")
     s.set_defaults(fn=cmd_cites)
 
-    s = sub.add_parser("audit", help="check every reference in a paper (arXiv id/URL or .bib/.bbl/.tex)")
+    s = sub.add_parser("audit", help="check every reference in a paper (DOI, arXiv id, URL, or .bib/.bbl/.tex)")
     s.add_argument("target")
     s.add_argument("--all", action="store_true", help="also list references that could not be checked")
     s.add_argument("--json", action="store_true")

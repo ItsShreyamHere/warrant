@@ -350,3 +350,21 @@ def test_audit_bbl_regressions():
     assert a.doi == "10.3368/jhr.50.2.317"
     assert a.title == "A practitioner's guide to cluster-robust inference"
     assert b.arxiv is None and b.title.startswith("Building information modelling framework")
+
+
+def test_audit_refs_from_doi(monkeypatch):
+    from warrant import audit
+    body = json.dumps({"message": {"reference": [
+        {"key": "r1", "DOI": "10.1038/nature14539"},
+        {"key": "r2", "unstructured": "Smith, J. (2019) Gradient folding in sparse nets. J. Imag. Res. 3, 1-9."},
+        {"key": "r3", "article-title": "Deep learning", "year": "2015"},
+    ]}})
+    monkeypatch.setattr(cites, "_get", lambda url, **kw: (200, body))
+    refs = audit.refs_from_doi("10.1038/s41586-021-03819-2")
+    assert [r.key for r in refs] == ["r1", "r2", "r3"]
+    assert refs[0].doi == "10.1038/nature14539"
+    assert refs[1].title == "Gradient folding in sparse nets"
+    assert refs[2].title == "Deep learning"
+    monkeypatch.setattr(cites, "_get", lambda url, **kw: (200, json.dumps({"message": {}})))
+    with pytest.raises(ValueError, match="did not deposit"):
+        audit.refs_from_doi("10.1/x")

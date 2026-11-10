@@ -1,6 +1,6 @@
 {
   "name": "warrant",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Keeps Claude honest during research: holds your question, checks every claim against evidence with code (not a model), and buries refuted ideas so they don't come back.",
   "keywords": ["research", "science", "math", "reproducibility", "pre-registration", "hooks"]
 }
