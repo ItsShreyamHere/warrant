@@ -2,9 +2,9 @@
 
 <img src="docs/hero.svg" alt="A Claude write-up with five numbers highlighted green, traced to the training run, and two red numbers that no run produced" width="820">
 
-# no source, no number.
+# The referee that reads every paper you cite.
 
-**warrant stops your AI from making up numbers or citations in research. Code checks every one. No model judges.**
+**warrant checks research claims against their sources: the cited papers' full text, the paper's own tables, and the statistics' own arithmetic. Code does the checking. Where judgment is needed, a model reads 13× less and must quote.**
 
 <a href="https://github.com/ItsShreyamHere/warrant/stargazers"><img src="https://img.shields.io/github/stars/ItsShreyamHere/warrant?style=flat-square&color=1f7a4d" alt="Stars"></a>
 <a href="#install"><img src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square" alt="Claude Code plugin"></a>
@@ -14,16 +14,16 @@
 
 <table>
 <tr>
-<td align="center" width="25%"><h3>0 model calls</h3>every verdict is plain code<br><sub><a href="#how-it-works">how it works</a></sub></td>
-<td align="center" width="25%"><h3>4 registries</h3>doi.org · arXiv · OpenAlex · Crossref<br><sub>checked live, cached</sub></td>
-<td align="center" width="25%"><h3>~100 tokens</h3>per session; hooks add 0<br><sub>per <code>claude plugin details</code></sub></td>
-<td align="center" width="25%"><h3>1 command</h3>to audit any paper's references: DOI or arXiv<br><sub><a href="#try-it-on-any-paper-first-10-seconds-no-setup">try it</a></sub></td>
+<td align="center" width="25%"><h3>13× less reading</h3>evidence cards vs. the cited papers' full text<br><sub>measured on arXiv:1706.03762</sub></td>
+<td align="center" width="25%"><h3>0 trust in quotes</h3>every model verdict must quote the source verbatim, or it's rejected<br><sub><a href="#warrant-review-a-referee-report-in-one-command">how</a></sub></td>
+<td align="center" width="25%"><h3>5 tests recomputed</h3>t · F · χ² · r · z p-values, from scratch, no SciPy<br><sub>statcheck method + GRIM</sub></td>
+<td align="center" width="25%"><h3>0 dependencies</h3>stdlib Python; hooks add 0 tokens<br><sub>~100 tokens/session for the skill</sub></td>
 </tr>
 </table>
 
-*Run first. Report second. Cite what exists.*
+*Run first. Report second. Cite what exists, and what it actually says.*
 
-**[Install](#install) · [Try on any paper](#try-it-on-any-paper-first-10-seconds-no-setup) · [Before / after](#before--after) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
+**[Install](#install) · [Review a paper](#warrant-review-a-referee-report-in-one-command) · [Live in Claude Code](#what-it-does-inside-claude-code) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
 
 <img src="docs/demo.gif" alt="Claude writes up a result with an invented number and a fake DOI; warrant blocks the reply; Claude runs the experiment and rewrites it with every number traced to the run" width="820">
 
@@ -62,7 +62,39 @@ Every number traced to a run or marked `~`. The citation resolves.
 
 ---
 
-## Try it on any paper first: 10 seconds, no setup
+## `warrant review`: a referee report in one command
+
+```bash
+warrant review 1706.03762        # any arXiv paper, arXiv DOI, or your own LaTeX folder
+```
+
+What it checks, and who decides:
+
+| check | how | decided by |
+|---|---|---|
+| Every reference exists | doi.org · arXiv · OpenAlex · Crossref | **code** |
+| A number attributed to a cited paper ("X reaches 92.1% [12]") is in that paper | reads the cited paper's **full text**, matches within rounding | **code** |
+| Numbers in the abstract appear in the paper's own body and tables | provenance index of the paper | **code** |
+| Every p-value follows from its test statistic: t(28) = 1.20, p < .05 ✗ (really .24) | incomplete beta/gamma from scratch, rounding-aware ([statcheck](https://doi.org/10.3758/s13428-015-0664-2) method) | **code** |
+| Reported means are possible for their n (M = 3.47, n = 21 ✗) | [GRIM](https://doi.org/10.1177/1948550616673876) | **code** |
+| "Significantly better" comes with a test, CI or ± | context scan | **code** |
+| The cited passage actually says what the citing sentence claims | BM25 retrieves the 2 best passages per claim. The model judges **only those**, and its quote must exist verbatim in the cited paper | **model, quote-verified by code** |
+
+```
+$ warrant review --verify verdicts.json
+OK card 1: partial: quote found verbatim in the cited paper
+OK card 2: not_found: no supporting passage in the retrieved evidence
+OK card 3: supports: quote found verbatim in the cited paper
+XX card 3: supports: REJECTED: quote is not in the cited paper
+```
+
+That's a real run on the Transformer paper's citations. The rejected verdict carried a plausible-sounding quote that the cited ByteNet paper never contains. In Claude Code, the skill runs the whole loop: code checks, cards, verdicts, verify. It then writes a referee report where every comment is labelled `[verified by code]`, `[quote-verified]` or `[reviewer judgment]`.
+
+> ⭐ **Reviewing papers is about to get a lot faster.** [Star warrant](https://github.com/ItsShreyamHere/warrant/stargazers) so your co-reviewers find it too.
+
+---
+
+### Just the references, for any DOI
 
 ```bash
 pip install warrant-research
@@ -101,7 +133,7 @@ Hooks capture every command output and every file Claude reads. Before a reply f
 - to a mean of per-seed values;
 - or to a difference or ratio of traced numbers.
 
-If any number came from nowhere, the reply is blocked.
+If any number came from nowhere, or a reported p-value doesn't follow from its test statistic, the reply is blocked.
 
 </td>
 <td width="33%" valign="top">
@@ -298,6 +330,8 @@ Locally: `warrant audit refs.bib --badge references.svg`.
 
 | command | does |
 |---|---|
+| `warrant review PAPER` / `--verify verdicts.json` | referee report: code checks + quote-verified evidence cards |
+| `warrant stats FILE` | recompute every p-value (t, F, χ², r, z) and GRIM-check means |
 | `warrant init [QUESTION]` | turn warrant on for this project |
 | `warrant audit DOI \| ARXIV_ID \| FILE` | check every reference in a paper or bibliography |
 | `warrant cites FILE` / `warrant trace FILE` | check a draft's citations / numbers |
@@ -321,6 +355,8 @@ Locally: `warrant audit refs.bib --badge references.svg`.
 - `echo 0.93` produces a 0.93. The audit trail records the command, but warrant doesn't flag it: it is tamper-evident, not tamper-proof.
 - Quote checks use the abstract. A quote that only appears in the full text comes back "unverified", never "fake".
 - Whole numbers ("15 minutes") are not traced unless `WARRANT_STRICT=1`, to avoid false alarms.
+- `review` reads cited papers' full text when they are on arXiv. Others are checked for existence only. A `not_found` card means retrieval didn't surface support, not that the paper lacks it.
+- statcheck needs APA-style reporting (`t(28) = 2.10, p = .04`). GRIM only applies to integer-valued data such as Likert items or counts.
 
 ---
 

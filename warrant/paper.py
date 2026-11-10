@@ -52,15 +52,20 @@ class Paper:
 
 
 def parse_tex(files: dict[str, str]) -> Paper:
-    tex = "\n".join(strip_comments(t) for name, t in files.items() if name.lower().endswith(".tex"))
+    parts = []
+    for name, t in files.items():
+        if not name.lower().endswith(".tex"):
+            continue
+        t = strip_comments(t)
+        start = t.find("\\begin{document}")  # per file: section files have no preamble
+        t = t[start:] if start >= 0 else t
+        parts.append(re.split(r"\\begin\{thebibliography\}|\\bibliography\{|\\printbibliography", t)[0])
+    tex = "\n".join(parts)
     p = Paper()
     m = _ABSTRACT.search(tex)
     if m:
         p.abstract = tex_to_text(m.group(1))
         tex = tex.replace(m.group(0), " ")
-    start = tex.find("\\begin{document}")
-    tex = tex[start:] if start >= 0 else tex
-    tex = re.split(r"\\begin\{thebibliography\}|\\bibliography\{|\\printbibliography", tex)[0]
     marked = _CITE.sub(lambda m: " " + MARK.format(m.group(1).replace(" ", "")) + " ", tex)
     text = tex_to_text(marked)
     p.body = _MARK_RE.sub(" ", text)

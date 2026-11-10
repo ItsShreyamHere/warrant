@@ -1,6 +1,6 @@
 ---
 name: warrant
-description: Keeps research honest. Use whenever the user does research with you, in ML/CS experiments, data analysis, science, statistics or mathematics. Typical moments are framing a research question, planning or running an experiment, comparing methods, reporting a result or metric, citing papers, reviewing a draft or bibliography, or writing up findings. Also use when the user asks to check a paper's references or where a number came from.
+description: Keeps research honest. Use whenever the user does research with you, in ML/CS experiments, data analysis, science, statistics or mathematics. Typical moments are framing a research question, planning or running an experiment, comparing methods, reporting a result or metric, citing papers, reviewing a draft or bibliography, or writing up findings. Also use when the user asks you to review, referee or fact-check a paper or draft, check its references or statistics, or asks where a number came from.
 ---
 
 # warrant: every number and citation must be earned
@@ -9,7 +9,9 @@ warrant checks your research output with plain code, never a model:
 
 - **Numbers.** Every decimal and percentage in your final reply must trace to something that actually ran or was read. A value within rounding counts. So does a mean of logged values, or a difference or ratio of traced numbers. Text you wrote, or wrote and read back, is never evidence.
 - **Citations.** DOIs, arXiv ids and quoted titles are looked up in doi.org, arXiv, OpenAlex and Crossref.
-- **Enforcement.** Hooks capture tool output automatically. The Stop hook blocks a reply once if it fails either check.
+- **Statistics.** Every reported p-value is recomputed from its test statistic (t, F, chi2, r, z).
+- **Enforcement.** Hooks capture tool output automatically. The Stop hook blocks a reply once if it fails any check.
+- **Paper review.** `warrant review` reads the cited papers so you don't: you judge short evidence cards, and code verifies your quotes (section 7).
 
 ## Running the CLI
 
@@ -80,9 +82,43 @@ Fix a bad citation, or remove it. Do not argue with the hook. Do not launder num
 
 If work drifts from the recorded question, tell the user in one line and ask: is this a new sub-question, or a tangent? Never re-propose a graveyard idea without pre-registering what new result would justify it. `warrant claim` warns when an idea resembles a dead one.
 
-## 7. Checking papers and drafts
+## 7. Reviewing a paper or draft (`warrant review`)
+
+Use this when the user asks you to review, referee, fact-check or vet a paper. That includes their own draft before submission. **Do not read the cited papers yourself.** warrant does the reading and hands you only what needs judgment.
+
+1. **Run the code checks:**
+   ```bash
+   warrant review 1706.03762          # arXiv id, arXiv-hosted DOI, a LaTeX folder, or main.tex
+   ```
+   This writes `warrant-review/<paper>/report.md` and `cards.json`. Code already checked:
+   - each reference exists;
+   - each number attributed to a cited paper appears in that paper's full text;
+   - abstract numbers appear in the body;
+   - every reported p-value follows from its test statistic (statcheck);
+   - means are possible for their n (GRIM);
+   - "significant" comes with statistics.
+
+   Report these findings as given. They are facts, not opinions.
+2. **Judge the evidence cards.** Each card is one citing claim plus the 2 best-matching passages (~110 words each) from the cited paper. Read only the cards. For each card, decide:
+   - `supports`: the passage says what the claim attributes to it;
+   - `partial`: related, but the claim says more, or something different;
+   - `contradicts`: the passage says the opposite;
+   - `not_found`: the passages don't address the claim. This is not proof the paper lacks it, only that retrieval didn't surface it.
+
+   Every verdict except `not_found` needs a **verbatim quote** copied from a passage. Write `verdicts.json` as `[{"card": 1, "verdict": "partial", "quote": "..."}]`.
+3. **Verify:** run `warrant review --verify warrant-review/<paper>/verdicts.json`. Code rejects any verdict whose quote is not verbatim in the cited paper. Fix the rejected ones, never paraphrase.
+4. **Write the referee report.** Lead with the code-verified problems, then the citation verdicts, then your own assessment of:
+   - methods: design, controls, baselines, ablations, seeds;
+   - reproducibility: code, data, hyperparameters;
+   - whether the conclusions follow from the evidence;
+   - the field's reporting guideline, where one applies: CONSORT (trials), PRISMA (reviews), ARRIVE (animals), or ML reproducibility checklists.
+
+   Write each comment as **Location · Observation · Evidence · Why it matters · Requested action**. Label each comment `[verified by code]`, `[quote-verified]` or `[reviewer judgment]` so the reader knows what is checked and what is opinion. (Comment structure adapted from the MIT-licensed peer-review skill in K-Dense-AI/claude-scientific-skills.)
+
+Other paper checks:
 
 ```bash
+warrant stats draft.md                     # recompute every p-value (t, F, chi2, r, z) and GRIM-check means
 warrant audit 10.1038/s41586-021-03819-2   # every reference in a paper: DOI, arXiv id, URL, or refs.bib / main.bbl
 warrant cites draft.md              # citations in a draft
 warrant trace draft.md --all        # where each number came from

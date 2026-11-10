@@ -14,7 +14,7 @@ Evidence cards (token-efficient judgment):
 import json
 import os
 import re
-import time
+
 from pathlib import Path
 
 from . import audit, cites, stats
@@ -98,13 +98,27 @@ def significance(p: pp.Paper) -> list[dict]:
     sents = pp._SENT_SPLIT.split(p.body)
     out = []
     for i, s in enumerate(sents):
-        if _SIGNIF.search(s) and not _NOT_SIGNIF.search(s) and _OWN.search(s):
+        # only quantitative claims: "significantly faster to train" is not a statistical claim
+        if _SIGNIF.search(s) and not _NOT_SIGNIF.search(s) and _OWN.search(s) and prov.extract(s):
             ctx = " ".join(sents[max(0, i - 1):i + 2])
             if not _STATS.search(ctx):
                 out.append({"check": "significance without statistics", "level": "yellow",
                             "sentence": s[:300],
                             "detail": "claims significance; no p-value, CI, ± or test in this or adjacent sentences"})
     return out
+
+
+_TOOL_CREDIT = re.compile(r"^\s*(?:we|following|as in|similar(?:ly)? to)\b[^.]{0,40}\b"
+                          r"(?:use[ds]?|using|follow(?:ed|ing)?|adopt(?:ed)?|employ(?:ed)?|implement(?:ed)?|"
+                          r"set|train(?:ed)?)\b|\b(?:implementation|code|toolkit|library|dataset) (?:of|from)\b", re.I)
+_CLAIM_WORDS = re.compile(r"\b(show(?:s|ed|n)?|found|find(?:s)?|report(?:s|ed)?|demonstrat\w+|achiev\w+|"
+                          r"outperform\w*|improv\w+|state[- ]of[- ]the[- ]art|surpass\w*|prove[sdn]?|"
+                          r"fail(?:s|ed)?|cannot|limitation|suffer\w*|known to|leads? to|causes?)\b", re.I)
+
+
+def claim_strength(sent: str, nums: list) -> int:
+    """Rank citing sentences: reported results and empirical claims first."""
+    return 2 * bool(nums) + len(_CLAIM_WORDS.findall(sent))
 
 
 def stat_findings(text: str) -> list[dict]:
@@ -142,39 +156,50 @@ def run(files: dict[str, str], max_sources: int = 25, max_cards: int = 40, check
     for _, keys in p.sentences:
         for k in keys:
             counts[k] = counts.get(k, 0) + 1
-    sources: dict[str, dict] = {}
-    for key in sorted(counts, key=lambda k: -counts[k]):
-        if len(sources) >= max_sources:
-            break
-        r = refs.get(key)
-        if not r:
-            continue
+    wanted = [k for k in sorted(counts, key=lambda k: -counts[k]) if k in refs][: max_sources * 2]
+
+    def fetch(key):
+        r = refs[key]
         aid = r.arxiv or find_arxiv(r.title, r.doi)
         if not aid:
-            continue
+            return key, None
         log(f"reading cited paper {key} (arXiv:{aid}) ...")
         src = source_text(aid)
-        if src:
-            sources[key] = {"arxiv": aid, "title": r.title, **src}
-        time.sleep(1)  # polite to arXiv
+        return key, ({"arxiv": aid, "title": r.title, **src} if src else None)
 
-    cards = []
+    # a few in parallel: arXiv and OpenAlex throttle bursts, _get backs off on 429
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(4) as ex:
+        got = [kv for kv in ex.map(fetch, wanted) if kv[1]]
+    sources: dict[str, dict] = dict(got[:max_sources])
+
+    candidates = []
     for sent, keys in p.sentences:
-        if len(keys) != 1 or keys[0] not in sources:
-            continue  # multi-citation sentences can't be attributed to one source
-        src = sources[keys[0]]
-        full = src["abstract"] + " " + src["body"]
+        keys = [k for k in keys if k in sources]
+        if not keys:
+            continue
         nums = prov.extract(sent)
-        if nums and not _OWN.search(sent):
-            src_nums = prov.source_numbers(full)
+        if len(keys) == 1 and nums and not _OWN.search(sent):
+            # one source, numbers, not our own result: the numbers are attributed to that source
+            src = sources[keys[0]]
+            src_nums = prov.source_numbers(src["abstract"] + " " + src["body"])
             missing = [t.raw for t in nums if not _in_text(t, src_nums)]
             if missing:
                 findings.append({"check": "attributed number not in cited paper", "level": "red",
                                  "ref": keys[0], "sentence": sent[:300], "number": ", ".join(missing),
                                  "detail": f"not found anywhere in arXiv:{src['arxiv']}"})
-        if len(cards) < max_cards:
-            ev = pp.best_passages(sent, full, k=2)
-            cards.append({"card": len(cards) + 1, "ref": keys[0], "arxiv": src["arxiv"], "title": src["title"],
+        if _TOOL_CREDIT.search(sent) or len(keys) > 2:
+            continue  # credits a tool/dataset, or a citation list: no single claim to check
+        candidates.append((claim_strength(sent, nums), sent, keys))
+
+    cards = []
+    for _, sent, keys in sorted(candidates, key=lambda c: -c[0]):
+        for key in keys:
+            if len(cards) >= max_cards:
+                break
+            src = sources[key]
+            ev = pp.best_passages(sent, src["abstract"] + " " + src["body"], k=2)
+            cards.append({"card": len(cards) + 1, "ref": key, "arxiv": src["arxiv"], "title": src["title"],
                           "claim": sent[:400], "passages": [d for _, d in ev], "score": ev[0][0] if ev else 0})
     return {"findings": findings, "cards": cards,
             "stats": {"references": len(refs), "citing_sentences": len(p.sentences),
