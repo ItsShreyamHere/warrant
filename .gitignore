@@ -7,3 +7,4 @@ dist/
 bench/scan.log
 bench/results/
 bench/stats.log
+bench/pmc.log
