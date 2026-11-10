@@ -300,3 +300,12 @@ def test_html_report(rec):
     claim(rec, "it proves everything")
     out = report.html(rec)
     assert "Does &lt;it&gt; work?" in out and "flagged" in out and "hash chain intact" in out
+
+
+def test_doi_cleanup_regressions():
+    # live run 1: a DOI in markdown backticks was looked up with the backtick attached
+    assert cites.clean_doi("10.1109/CVPR.2016.90`") == "10.1109/CVPR.2016.90"
+    assert cites.clean_doi("10.48550/arXiv.1512.03385`).") == "10.48550/arXiv.1512.03385"
+    assert cites.clean_doi("10.1016/S0140-6736(20)30183-5).") == "10.1016/S0140-6736(20)30183-5"
+    found = [m.group(1) for m in cites._DOI.finditer("DOI `10.1109/CVPR.2016.90` here")]
+    assert [cites.clean_doi(x) for x in found] == ["10.1109/CVPR.2016.90"]

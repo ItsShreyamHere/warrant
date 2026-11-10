@@ -51,18 +51,41 @@ def title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, _norm_title(a), _norm_title(b)).ratio()
 
 
+def clean_doi(raw: str) -> str:
+    """Strip markdown/prose punctuation glued to a DOI; keep balanced parentheses
+    (real DOIs like 10.1016/S0140-6736(20)30183-5 contain them)."""
+    doi = raw
+    while doi and (doi[-1] in ".,;:]}>`'\"*_" or (doi[-1] == ")" and doi.count("(") < doi.count(")"))):
+        doi = doi[:-1]
+    return doi
+
+
 def resolve_doi(doi: str) -> dict:
-    code, body = _get("https://api.crossref.org/works/" + urllib.parse.quote(doi, safe="/"))
-    if code == 404:
+    # existence: the doi.org handle service covers every registrar (Crossref, DataCite, ...)
+    q = urllib.parse.quote(doi, safe="/()")
+    code, body = _get("https://doi.org/api/handles/" + q)
+    if code == 404 or (code == 200 and '"responseCode":100' in body.replace(" ", "")):
         return {"status": RED, "why": "DOI does not exist"}
     if code != 200:
-        return {"status": YELLOW, "why": "Crossref unreachable"}
-    try:
-        msg = json.loads(body)["message"]
-        title = (msg.get("title") or [""])[0]
-        abstract = re.sub(r"<[^>]+>", " ", msg.get("abstract") or "")
-    except (ValueError, KeyError, IndexError):
-        return {"status": YELLOW, "why": "unreadable Crossref response"}
+        return {"status": YELLOW, "why": "doi.org unreachable"}
+    title, abstract = "", ""
+    code, body = _get("https://api.crossref.org/works/" + q)
+    if code == 200:
+        try:
+            msg = json.loads(body)["message"]
+            title = (msg.get("title") or [""])[0]
+            abstract = re.sub(r"<[^>]+>", " ", msg.get("abstract") or "")
+        except (ValueError, KeyError, IndexError):
+            pass
+    else:
+        code, body = _get("https://api.datacite.org/dois/" + q)
+        if code == 200:
+            try:
+                attrs = json.loads(body)["data"]["attributes"]
+                title = (attrs.get("titles") or [{}])[0].get("title", "")
+                abstract = " ".join(d.get("description", "") for d in attrs.get("descriptions") or [])
+            except (ValueError, KeyError, IndexError):
+                pass
     return {"status": GREEN, "why": "resolves", "title": title, "abstract": abstract}
 
 
@@ -136,7 +159,7 @@ def check_text(text: str, cache_dir: Path | None = None) -> list[dict]:
     out, seen, lookups = [], set(), 0
     found: list[tuple[str, str, int]] = []
     for m in _DOI.finditer(text):
-        found.append(("doi", m.group(1).rstrip(".,;:)]}>"), m.start()))
+        found.append(("doi", clean_doi(m.group(1)), m.start()))
     for m in _ARXIV.finditer(text):
         found.append(("arxiv", m.group(1), m.start()))
     covered = []
@@ -186,7 +209,7 @@ def resolve(ref: str) -> dict:
         return resolve_arxiv(m.group(1))
     m = _DOI.search(ref)
     if m:
-        return resolve_doi(m.group(1).rstrip(".,;:)]}>"))
+        return resolve_doi(clean_doi(m.group(1)))
     return search_title(ref)
 
 
@@ -208,7 +231,7 @@ def check_bib(text: str, cache_dir: Path | None = None) -> list[dict]:
     out = []
     for e in bib_entries(text):
         if e["doi"]:
-            res = dict(cache.get(f"doi:{e['doi']}", lambda: resolve_doi(e["doi"])))
+            res = dict(cache.get(f"doi:{clean_doi(e['doi'])}", lambda: resolve_doi(clean_doi(e["doi"]))))
         elif e["eprint"]:
             res = dict(cache.get(f"arxiv:{e['eprint']}", lambda: resolve_arxiv(e["eprint"])))
         elif e["title"]:
