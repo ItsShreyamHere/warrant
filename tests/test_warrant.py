@@ -5,7 +5,7 @@ from contextlib import closing
 
 import pytest
 
-from warrant import checks, falsify, hooks
+from warrant import checks, cites, falsify, hooks, provenance, report
 from warrant.cli import main
 from warrant.record import Record
 
@@ -13,8 +13,11 @@ from warrant.record import Record
 @pytest.fixture
 def rec(tmp_path, monkeypatch):
     monkeypatch.setenv("WARRANT_DIR", str(tmp_path / ".warrant"))
+    monkeypatch.setenv("WARRANT_OFFLINE", "1")
     monkeypatch.chdir(tmp_path)
-    return Record()
+    r = Record()
+    r.create()
+    return r
 
 
 def claim(rec, text):
@@ -26,6 +29,10 @@ def status(rec, cid):
     return checks.evaluate(rec.state()["claims"][cid])
 
 
+def observe(rec, text, tool="Bash", label="Bash: python train.py"):
+    rec.observe(tool, label, text, provenance.source_numbers(text), provenance.keyed_values(text))
+
+
 # --- falsify (ported from ROS) ---
 
 def test_falsify_core():
@@ -33,7 +40,6 @@ def test_falsify_core():
     assert falsify.check(pred, "any", {"recall": 0.82}, {"recall": 0.90}) == "refuted"
     assert falsify.check(pred, "any", {"recall": 0.885}, {"recall": 0.90}) == "supported"
     assert falsify.check([], "any", {"recall": 0.5}, {}) == "inconclusive"
-    # missing metric must never read as supported
     assert falsify.check(pred, "any", {"acc": 0.9}, {"recall": 0.9}) == "inconclusive"
     two = [{"metric": "a", "op": "lt", "of": "absolute", "threshold": 1},
            {"metric": "b", "op": "gt", "of": "absolute", "threshold": 1}]
@@ -49,6 +55,14 @@ def test_chain_detects_tampering(rec):
     assert rec.verify_chain()
     with closing(sqlite3.connect(rec.path)) as c, c:
         c.execute("UPDATE events SET body = ? WHERE seq = 1", (json.dumps({"text": "edited"}),))
+    assert not rec.verify_chain()
+
+
+def test_chain_detects_edited_observation(rec):
+    observe(rec, "acc=0.81")
+    assert rec.verify_chain()
+    f = next((rec.dir / "obs").iterdir())
+    f.write_text("acc=0.99")
     assert not rec.verify_chain()
 
 
@@ -74,8 +88,7 @@ def test_metric_not_in_log_is_red(rec, tmp_path):
 
 
 def test_no_evidence_is_yellow(rec):
-    cid = claim(rec, "the method is interesting")
-    assert status(rec, cid)["status"] == "yellow"
+    assert status(rec, claim(rec, "the method is interesting"))["status"] == "yellow"
 
 
 def test_significant_on_one_seed_is_red(rec, tmp_path):
@@ -96,8 +109,7 @@ def test_significant_with_seeds_and_p_is_green(rec, tmp_path):
 
 
 def test_proves_without_proof_is_red(rec):
-    cid = claim(rec, "this proves the bound is tight")
-    assert status(rec, cid)["status"] == "red"
+    assert status(rec, claim(rec, "this proves the bound is tight"))["status"] == "red"
 
 
 def test_understatement_note(rec, tmp_path):
@@ -119,8 +131,13 @@ def test_predict_result_refuted_goes_to_graveyard(rec, capsys):
     assert status(rec, cid)["status"] == "red"
     assert st["graveyard"][0]["idea"] == "label smoothing improves val acc"
     capsys.readouterr()
-    main(["claim", "label smoothing improves validation acc with mixup"])
+    main(["claim", "label smoothing with mixup improves validation acc"])
     assert "resembles dead idea" in capsys.readouterr().out
+
+
+def test_unrelated_idea_not_flagged_as_dead(rec):
+    rec.append("kill", idea="label smoothing improves val acc", why="refuted")
+    assert checks.graveyard_match("cosine schedule shortens training", rec.state()) is None
 
 
 def test_missing_metric_is_inconclusive(rec):
@@ -139,24 +156,58 @@ def test_predict_after_result_rejected(rec):
         main(["predict", str(cid), '{"metric":"a","op":"gt","of":"absolute","threshold":1}'])
 
 
-# --- number tracing ---
+# --- number provenance ---
 
-def test_trace_numbers(rec, tmp_path):
-    log = tmp_path / "run.log"
-    log.write_text("val_acc=0.8123\n")
-    cid = claim(rec, "acc")
-    main(["evidence", str(cid), "--log", str(log), "--metric", "val_acc=0.8123"])
-    st = rec.state()
-    assert checks.untraced_numbers("we reach 81.2% accuracy in 2024 with 3 runs", st) == []
-    assert checks.untraced_numbers("accuracy 0.874 and F1 0.66", st) == ["0.874", "0.66"]
+def test_extract_skips_non_quantities():
+    text = ("See Section 3.2 and Table 4. Python 3.13, run on 2026-11-10 at 14:05. "
+            "Code: `lr=0.003`. ```\nbatch=512\n``` Paper doi 10.1234/abc.5678 arXiv:2401.01234. "
+            "Roughly ~0.7 by estimate. File results_v2.json. Accuracy 0.874.")
+    assert [t.raw for t in provenance.extract(text)] == ["0.874"]
+
+
+def test_trace_exact_percent_mean_derived(rec):
+    observe(rec, "seed0 val_acc=0.812\nseed1 val_acc=0.806\nseed2 val_acc=0.818\nbaseline_acc=0.790\n")
+    text = ("Mean accuracy 0.812 (81.2%), best seed 0.818, vs baseline 0.790: "
+            "a gain of 0.022. Invented: 0.874.")
+    assert checks.untraced_numbers(text, rec) == ["0.874"]
+
+
+def test_mean_across_separate_runs(rec):
+    observe(rec, "val_acc=0.70")
+    observe(rec, "val_acc=0.80")
+    assert checks.untraced_numbers("mean val acc 0.75 across seeds", rec) == []
+
+
+def test_written_file_is_not_evidence(rec, tmp_path, monkeypatch, capsys):
+    p = str(tmp_path / "results.md")
+    _hook("post", rec, {"tool_name": "Write", "tool_input": {"file_path": p, "content": "acc 0.931"}},
+          monkeypatch, capsys)
+    _hook("post", rec, {"tool_name": "Read", "tool_input": {"file_path": p},
+                        "tool_response": {"file": {"content": "acc 0.931"}}}, monkeypatch, capsys)
+    assert checks.untraced_numbers("accuracy 0.931", rec) == ["0.931"]
+
+
+def test_bash_output_is_evidence(rec, monkeypatch, capsys):
+    _hook("post", rec, {"tool_name": "Bash", "tool_input": {"command": "python eval.py"},
+                        "tool_response": {"stdout": "test_acc: 0.8421\n", "stderr": ""}}, monkeypatch, capsys)
+    assert checks.untraced_numbers("test accuracy is 84.21%", rec) == []
+
+
+def test_user_prompt_numbers_are_sources(rec, monkeypatch, capsys):
+    _hook("prompt", rec, {"prompt": "our old model got 0.731 on this"}, monkeypatch, capsys)
+    assert checks.untraced_numbers("the previous 0.731 result", rec) == []
 
 
 # --- hooks ---
 
-def _transcript(tmp_path, text):
+def _transcript(tmp_path, *entries):
     p = tmp_path / "t.jsonl"
-    p.write_text(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}) + "\n")
+    p.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
     return str(p)
+
+
+def _say(text):
+    return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
 
 
 def _hook(name, rec, inp, monkeypatch, capsys):
@@ -168,20 +219,37 @@ def _hook(name, rec, inp, monkeypatch, capsys):
 
 def test_hooks_silent_without_record(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("WARRANT_DIR", str(tmp_path / "none"))
-    assert _hook("stop", Record(), {"transcript_path": _transcript(tmp_path, "acc 0.99")}, monkeypatch, capsys) is None
+    t = _transcript(tmp_path, _say("acc 0.99"))
+    assert _hook("stop", Record(), {"transcript_path": t}, monkeypatch, capsys) is None
+    assert not (tmp_path / "none").exists()
 
 
 def test_stop_blocks_untraced_then_releases(rec, tmp_path, monkeypatch, capsys):
-    rec.append("question", text="does it work?", hypothesis=None)
-    t = _transcript(tmp_path, "Final: accuracy 0.874.")
+    t = _transcript(tmp_path, _say("Final: accuracy 0.874."))
     out = _hook("stop", rec, {"transcript_path": t}, monkeypatch, capsys)
     assert out["decision"] == "block" and "0.874" in out["reason"]
     assert _hook("stop", rec, {"transcript_path": t, "stop_hook_active": True}, monkeypatch, capsys) is None
 
 
+def test_stop_only_reads_final_reply(rec, tmp_path, monkeypatch, capsys):
+    t = _transcript(
+        tmp_path,
+        _say("Earlier guess 0.555."),
+        {"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}},
+        _say("Done, nothing to report."),
+    )
+    assert _hook("stop", rec, {"transcript_path": t}, monkeypatch, capsys) is None
+
+
+def test_stop_passes_traced_reply(rec, tmp_path, monkeypatch, capsys):
+    observe(rec, "val_acc=0.8123")
+    t = _transcript(tmp_path, _say("Validation accuracy reached 81.2%."))
+    assert _hook("stop", rec, {"transcript_path": t}, monkeypatch, capsys) is None
+
+
 def test_prompt_hook_anchors_question(rec, monkeypatch, capsys):
     rec.append("question", text="does it work?", hypothesis="yes")
-    out = _hook("prompt", rec, {}, monkeypatch, capsys)
+    out = _hook("prompt", rec, {"prompt": "go"}, monkeypatch, capsys)
     assert "does it work?" in out["hookSpecificOutput"]["additionalContext"]
 
 
@@ -190,3 +258,45 @@ def test_session_hook_lists_graveyard(rec, monkeypatch, capsys):
     rec.append("kill", idea="bigger batch helps", why="refuted")
     out = _hook("session", rec, {}, monkeypatch, capsys)
     assert "bigger batch helps" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_hook_errors_never_break_session(rec, monkeypatch, capsys):
+    monkeypatch.setattr(hooks, "HANDLERS", {"stop": lambda i, r: 1 / 0})
+    monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
+    assert hooks.run("stop", rec) == 0
+
+
+# --- citations (network mocked) ---
+
+def test_citations(rec, monkeypatch):
+    monkeypatch.setenv("WARRANT_OFFLINE", "0")
+    monkeypatch.setattr(cites, "resolve_doi", lambda d: (
+        {"status": "red", "why": "DOI does not exist"} if d.endswith("fake") else
+        {"status": "green", "why": "resolves", "title": "Attention Is All You Need"}))
+    monkeypatch.setattr(cites, "resolve_arxiv", lambda a: {"status": "green", "why": "resolves",
+                                                           "title": "Deep Residual Learning for Image Recognition"})
+    monkeypatch.setattr(cites, "search_title", lambda t: {"status": "red", "why": "no paper with this title found"})
+    text = ('As shown in "Attention Is All You Need" (doi 10.48550/real), and in 10.9999/fake. '
+            '"A Totally Different Paper About Llamas" arXiv:1512.03385. '
+            'Smith et al. (2023), "Quantum Gradient Folding in Sparse Transformers".')
+    got = {r["id"]: r["status"] for r in cites.check_text(text, rec.dir)}
+    assert got["doi:10.48550/real"] == "green"
+    assert got["doi:10.9999/fake"] == "red"
+    assert got["arXiv:1512.03385"] == "red"  # id is real, but it's a different paper
+    assert got['"Quantum Gradient Folding in Sparse Transformers"'] == "red"
+
+
+def test_bib(rec, monkeypatch):
+    monkeypatch.setattr(cites, "resolve_doi", lambda d: {"status": "green", "why": "resolves",
+                                                         "title": "Attention Is All You Need"})
+    bib = "@article{vaswani,\n  title={Attention is all you need},\n  doi={10.48550/x},\n}\n"
+    assert cites.check_bib(bib)[0]["status"] == "green"
+
+
+# --- report ---
+
+def test_html_report(rec):
+    rec.append("question", text="Does <it> work?", hypothesis=None)
+    claim(rec, "it proves everything")
+    out = report.html(rec)
+    assert "Does &lt;it&gt; work?" in out and "flagged" in out and "hash chain intact" in out

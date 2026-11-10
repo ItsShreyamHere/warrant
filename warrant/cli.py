@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import checks, hooks
+from . import checks, cites, hooks, report
 from .record import Record
 
 ICON = {"green": "OK ", "yellow": "?? ", "red": "XX "}
@@ -25,6 +25,14 @@ def _claim_or_die(st: dict, cid: int) -> dict:
     if not c:
         raise SystemExit(f"no claim #{cid}")
     return c
+
+
+def cmd_init(a, rec):
+    rec.create()
+    if a.question:
+        rec.append("question", text=a.question, hypothesis=None)
+    print(f"warrant is on for this project ({rec.dir}). Hooks will now capture tool output "
+          "and check Claude's replies.")
 
 
 def cmd_question(a, rec):
@@ -54,6 +62,11 @@ def cmd_evidence(a, rec):
             raise SystemExit(f"log not found: {a.log}")
         body.update(log=str(Path(a.log).resolve()), sha=sha, metrics=_kv(a.metric),
                     seeds=a.seeds, p=a.p, std=a.std)
+    elif a.type == "cite":
+        if not a.ref:
+            raise SystemExit("cite evidence needs --ref (DOI, arXiv id, or title)")
+        res = cites.check_quote(cites.resolve(a.ref), a.quote)
+        body.update(ref=a.ref, quote=a.quote, check={k: res.get(k) for k in ("status", "why", "title")})
     else:
         body.update(ref=a.ref, quote=a.quote, note=a.note)
     rec.append("evidence", **body)
@@ -127,6 +140,11 @@ def cmd_status(a, rec):
 
 
 def cmd_report(a, rec):
+    if a.html:
+        out = Path(a.output or "warrant-report.html")
+        out.write_text(report.html(rec), encoding="utf-8")
+        print(f"wrote {out}")
+        return
     st = rec.state()
     out = [f"# Research record\n\n**Question:** {st['question'] or '-'}\n"]
     if st["hypothesis"]:
@@ -152,16 +170,36 @@ def cmd_report(a, rec):
 
 def cmd_trace(a, rec):
     text = sys.stdin.read() if a.file == "-" else Path(a.file).read_text(encoding="utf-8", errors="replace")
-    bad = checks.untraced_numbers(text, rec.state())
+    rows = checks.trace_text(text, rec)
+    for t, h in rows:
+        if h is None:
+            print(f"XX  {t.raw:>12}  untraced")
+        elif a.all:
+            print(f"OK  {t.raw:>12}  {h[1]}: {h[0]}")
+    bad = [t for t, h in rows if h is None]
+    print(f"{len(rows) - len(bad)}/{len(rows)} numbers traced")
     if bad:
-        print("untraced numbers: " + ", ".join(bad))
         sys.exit(1)
-    print("every number traces to recorded evidence")
+
+
+def cmd_cites(a, rec):
+    text = Path(a.file).read_text(encoding="utf-8", errors="replace")
+    rows = cites.check_bib(text, rec.dir) if a.file.endswith(".bib") else cites.check_text(text, rec.dir)
+    for r in rows:
+        print(f"{ICON[r['status']]}{r['id']}: {r['why']}")
+    red = sum(r["status"] == "red" for r in rows)
+    print(f"{len(rows)} citations, {red} flagged")
+    if red:
+        sys.exit(1)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="warrant", description="Keep research with Claude honest.")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init", help="turn warrant on for this project")
+    s.add_argument("question", nargs="?")
+    s.set_defaults(fn=cmd_init)
 
     s = sub.add_parser("question", help="set the research question")
     s.add_argument("text")
@@ -211,13 +249,19 @@ def main(argv=None) -> int:
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_status)
 
-    s = sub.add_parser("report", help="markdown report of every claim")
+    s = sub.add_parser("report", help="report of every claim (markdown, or --html)")
     s.add_argument("-o", "--output")
+    s.add_argument("--html", action="store_true")
     s.set_defaults(fn=cmd_report)
 
     s = sub.add_parser("trace", help="list numbers in a draft that no evidence accounts for")
     s.add_argument("file", help="draft file, or - for stdin")
+    s.add_argument("--all", action="store_true", help="also show where traced numbers came from")
     s.set_defaults(fn=cmd_trace)
+
+    s = sub.add_parser("cites", help="check citations in a draft (.md/.tex/.txt) or a .bib file")
+    s.add_argument("file")
+    s.set_defaults(fn=cmd_cites)
 
     s = sub.add_parser("hook", help="Claude Code hook entry point")
     s.add_argument("name", choices=sorted(hooks.HANDLERS))

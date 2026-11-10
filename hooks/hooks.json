@@ -1,13 +1,16 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/bin/warrant.py\" hook session" } ] }
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" session", "timeout": 10 } ] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/bin/warrant.py\" hook prompt" } ] }
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" prompt", "timeout": 10 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" post", "timeout": 10 } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/bin/warrant.py\" hook stop" } ] }
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" stop", "timeout": 60 } ] }
     ]
   }
 }

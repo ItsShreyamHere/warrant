@@ -1,43 +1,34 @@
 # warrant
 
-**Keep research with Claude honest.** warrant is a Claude Code plugin that supervises research sessions:
+**Claude can't make up numbers or citations in your research anymore.**
 
-1. **Holds the question.** Your research question stays in front of Claude every turn. Tangents get named instead of silently eating the session.
-2. **Makes Claude show its evidence.** Every claim is bound to evidence: a run log, a citation, a proof. Plain code checks it, never a model. Wording has to match the evidence: "significantly better" on one seed gets flagged.
-3. **Keeps a graveyard.** Ideas refuted by their own pre-registered predicate are buried. Claude is warned when it tries to bring one back.
+warrant is a Claude Code plugin that supervises research sessions. Install it, run `warrant init`, and keep working. From then on:
 
-Every claim ends up **green** (verified by code), **yellow** (unverified), or **red** (contradicted, tampered, or overstated).
+- **Every number Claude reports must come from something that actually ran.** Hooks capture each command output and file Claude reads. Before a reply finishes, every decimal and percentage in it is traced back to its source, within rounding, or to a difference, ratio or mean of traced values. Untraced numbers block the reply.
+- **Every citation is looked up.** DOIs, arXiv ids and quoted paper titles are checked against Crossref, arXiv and OpenAlex. A fake DOI, a real id attached to the wrong paper, or a title that doesn't exist blocks the reply.
+- **Your question stays in view.** The research question rides along every turn. Ideas refuted by their own pre-registered test go to a graveyard, and Claude is warned when it tries to bring one back.
+- **Claims must match their evidence.** "Significantly better" on one seed is flagged. "Proves" with no proof is flagged. Strong results hedged into mush get a note.
 
-## What a session looks like
-
-```
-$ warrant question "Does label smoothing help on our 5k-example setup?"
-$ warrant claim "label smoothing significantly improves val acc"
-claim #1
-$ warrant evidence 1 --log runs/s0.log --metric val_acc=0.812
-claim #1: red
-  - says 'significant' but evidence has 1 seed(s), p=None
-
-$ warrant claim "smoothing 0.1 beats baseline"
-$ warrant predict 2 '{"metric":"val_acc","op":"le","of":"baseline"}'   # before running
-$ warrant result 2 --observed val_acc=0.806 --baseline val_acc=0.809
-claim #2: refuted                                                      # buried in the graveyard
-```
-
-When Claude finishes a reply containing numbers that no recorded run produced, the Stop hook blocks it:
+Code does every check, never a model. It has no dependencies and needs no API key.
 
 ```
-[warrant] These numbers in your reply do not trace to any recorded evidence: 0.835.
+Claude: Smoothing improves validation accuracy to 0.874 (vs 0.809 baseline),
+        consistent with Müller et al. (doi 10.48550/arXiv.1906.99999).
+
+[warrant] Your reply has numbers that no command output, file, or record entry
+produced: 0.874 and citations that do not resolve or do not match:
+doi:10.48550/arXiv.1906.99999 (DOI does not exist). Run the command that produces
+each number, fix or remove the citation, or label a number as an estimate with '~'.
 ```
 
 ## Why code, not a model
 
-Research agents grade their own homework. 2026 studies of autonomous research agents found they game their own evaluations on a large share of research tasks, and telling them the rules does not reliably stop them. warrant takes the verdict away from the model:
+Research agents grade their own homework. 2026 studies of autonomous research agents found they game their own evaluations on a large share of research tasks. Telling them the rules does not reliably stop them. A second model checking the first has the same problem. warrant takes the verdict away from the model:
 
-- **Pre-registration.** A refutation predicate is committed before results exist. A missing metric is `inconclusive`, never a silent pass.
-- **Hashed evidence.** Logs are hashed when attached. Editing a log afterwards turns the claim red. Reported metrics must literally appear in the log.
-- **Append-only record.** `.warrant/record.db` is a hash chain. Rewriting history is detected.
-- **Zero dependencies.** Python stdlib only. No API key, no network.
+- **Provenance, not plausibility.** A number is either in a captured tool output or it isn't. Text Claude writes, or writes and reads back, never counts as evidence.
+- **Pre-registration.** A refutation predicate is committed before results exist. A missing metric gives `inconclusive`, never a silent pass.
+- **Tamper-evident.** Every captured output and attached log is hashed. `.warrant/record.db` is a hash chain, so editing history or a log afterwards is detected.
+- **Quiet by default.** Hooks do nothing until `warrant init`. Code blocks, versions, dates, section numbers and `~estimates` are ignored. Plain whole numbers are only traced with `WARRANT_STRICT=1`. Each reply is blocked at most once.
 
 ## Install
 
@@ -48,34 +39,57 @@ As a Claude Code plugin:
 /plugin install warrant@warrant
 ```
 
-The CLI, for using it by hand or in CI:
+Then, in a research project:
 
 ```
-pip install warrant-research
+pip install warrant-research     # the CLI; hooks work without it
+warrant init "Does label smoothing help on our 5k-example setup?"
 ```
 
-Hooks do nothing until you run `warrant question` in a project. It is quiet by default.
+Needs Python 3.10+. Works on macOS, Linux and Windows.
+
+## Check any draft, even one not written with Claude
+
+```
+warrant cites paper.md        # or refs.bib: every DOI / arXiv id / title resolved
+warrant trace paper.md --all  # where each number came from, and which came from nowhere
+warrant report --html         # every claim, verdict, graveyard, integrity check
+```
+
+## Pre-registered experiments
+
+```
+$ warrant claim "label smoothing 0.1 improves val acc over baseline"
+claim #1
+$ warrant predict 1 '{"metric":"val_acc","op":"le","of":"baseline"}'   # before running
+$ warrant result 1 --observed val_acc=0.806 --baseline val_acc=0.809
+claim #1: refuted                                                      # -> graveyard
+```
 
 ## Commands
 
 | command | does |
 |---|---|
-| `warrant question TEXT [--hypothesis H]` | set the research question |
+| `warrant init [QUESTION]` | turn warrant on for this project |
+| `warrant question TEXT [--hypothesis H]` | set or change the research question |
 | `warrant claim TEXT` | record a claim (warns if it resembles a dead idea) |
-| `warrant evidence N --log F --metric k=v [--seeds S --p P --std D]` | attach run evidence |
-| `warrant evidence N --type cite --ref DOI --quote "..."` | attach a citation (checker coming) |
-| `warrant predict N JSON` | pre-register a refutation predicate |
-| `warrant result N --observed k=v [--baseline k=v]` | code decides supported / refuted / inconclusive |
-| `warrant kill IDEA --why W` / `warrant retract N` | bury an idea / withdraw a claim |
-| `warrant status` / `warrant report -o REPORT.md` | every claim with its status and reasons |
-| `warrant trace DRAFT.md` | list numbers in a draft that no evidence accounts for |
+| `warrant evidence N --log F --metric k=v [--seeds S --p P --std D]` | attach run evidence (hashed) |
+| `warrant evidence N --type cite --ref DOI/arXiv/title [--quote Q]` | attach a citation (resolved, quote checked against abstract) |
+| `warrant predict N JSON` / `warrant result N --observed k=v` | pre-register, then let code decide |
+| `warrant kill IDEA` / `warrant retract N` | bury an idea / withdraw a claim |
+| `warrant status` / `warrant report [--html]` | every claim with its status and reasons |
+| `warrant trace FILE` / `warrant cites FILE` | check a draft's numbers / citations |
+
+## Limits, stated plainly
+
+- Tracing proves a number was **produced**, not that the code producing it is correct.
+- `echo 0.93` produces a 0.93. The audit trail shows the command, but the check does not catch it. warrant is tamper-evident, not tamper-proof.
+- Quote checks use the abstract. A quote only in the full text comes back "unverified", never "fake".
+- Paraphrased titles may not match. Under 0.5 similarity counts as "not found".
 
 ## Roadmap
 
-- Citation checker: resolve DOI/arXiv and match the quote in the source text.
-- Proof receipts: Lean 4 / SymPy.
-- Drift detection beyond the question anchor.
-- HTML report and dashboard.
+Lean 4 / SymPy proof receipts · drift detection beyond the question anchor · live dashboard · GitHub Action badge.
 
 ## License
 

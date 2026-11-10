@@ -1,34 +1,45 @@
 ---
 name: warrant
-description: Use during any research session (ML/CS experiments, science, data analysis, mathematics) to keep claims honest. Record the research question, record each substantive claim, attach the evidence that produced it (run logs, citations, proofs), pre-register refutation predicates before experiments, and let code decide verdicts. Use when the user starts a research question, runs an experiment, reports a result or number, or writes up findings.
+description: Use during any research session (ML/CS experiments, science, data analysis, mathematics) to keep claims honest. Set the research question, pre-register what would refute a claim before running experiments, attach evidence, and let code decide verdicts. Use when the user starts a research question, plans or runs an experiment, reports results, cites papers, or writes up findings.
 ---
 
 # warrant
 
-`warrant` keeps a hash-chained record in `.warrant/` of the research question, every claim, its evidence, and refuted ideas (the graveyard). Verdicts and checks are plain code; you never grade your own claims.
+warrant supervises research sessions. Once a project has a `.warrant/` folder (`warrant init`), hooks run on their own:
 
-If `warrant` is not on PATH, use `python "<plugin root>/bin/warrant.py"` or ask the user to `pip install warrant-research`.
+- **Every tool output is captured.** Command output, files read and the user's prompts become the evidence pool, with a hash for each.
+- **Before you finish a reply, the Stop hook checks it.** Each decimal or percentage in your final reply must trace to something that actually ran or was read, within rounding. It may also be a difference, ratio or mean of traced values. DOIs, arXiv ids and quoted paper titles are looked up in Crossref, arXiv and OpenAlex. Untraced numbers and fake citations block the reply once, and you must fix them.
+- **The question stays in view.** It is shown each turn, and refuted ideas are shown at session start.
+
+Text you write with Write or Edit is never evidence. Neither is a file you wrote and then read back.
+
+If `warrant` is not on PATH, use `python "<plugin root>/bin/warrant.py"`.
 
 ## Workflow
 
-1. **Set the question once** at the start of a research task:
+1. **Set the question** at the start of a research task:
    `warrant question "Does label smoothing help on our 5k-example setup?" --hypothesis "smoothing 0.1 improves val acc"`
-2. **Before running an experiment, pre-register** what would refute the claim. Do this before you see results:
+2. **Pre-register before running.** Record the claim and what would refute it, before you see results:
    ```
    warrant claim "label smoothing 0.1 improves val acc over baseline"      # -> claim #N
    warrant predict N '{"metric":"val_acc","op":"le","of":"baseline"}'
    ```
-3. **After the run, record the result.** Code decides `supported` / `refuted` / `inconclusive`. Refuted ideas go to the graveyard automatically.
+3. **Run the experiment for real**, then record the result. Code decides supported / refuted / inconclusive. Refuted ideas go to the graveyard.
    `warrant result N --observed val_acc=0.812 --baseline val_acc=0.809`
-4. **Attach evidence for every number you report.** The log is hashed. Metrics must literally appear in it.
-   `warrant evidence N --type run --log runs/seed0-2.log --metric val_acc=0.812 --seeds 3 --std 0.011`
-   Citations: `--type cite --ref 10.xxxx/yyy --quote "exact sentence"`. Proofs: `--type proof --ref proof.lean`.
-5. **Before writing up**, run `warrant status` and fix every `XX` (red) claim. Then run `warrant report -o REPORT.md`.
+4. **Attach evidence to important claims.** Logs are hashed, and metrics must appear in them.
+   `warrant evidence N --type run --log runs/seeds.log --metric val_acc=0.812 --seeds 3 --std 0.011`
+   `warrant evidence N --type cite --ref 1706.03762 --quote "exact sentence"`
+5. **Before writing up**, run `warrant status`. Fix every `XX`. Then check the draft:
+   `warrant trace draft.md`, `warrant cites draft.md` (or `refs.bib`), `warrant report --html`.
 
 ## Rules
 
-- Never state a number in your reply that is not in recorded evidence. The Stop hook will block you and list the untraced numbers.
-- Wording must match evidence. "significant" needs >=3 seeds and p<0.05. "outperforms"/"improves" needs >=3 seeds or a supported pre-registered predicate. "proves" needs proof evidence. If evidence is weak, say so plainly. If evidence is strong, do not hedge it away.
-- Do not re-propose a graveyard idea unless you pre-register what new result would justify it. `warrant claim` warns you when an idea resembles a dead one.
-- Work that does not serve the recorded question is a tangent. Say so and ask the user before pursuing it, or set a new question.
-- Never edit `.warrant/` by hand. The hash chain detects it.
+- **Never report a number you did not get from a run, a file, or the user.** If it is an estimate, write `~` before it.
+- **Wording must match evidence.**
+  - "significant" needs >=3 seeds and p<0.05.
+  - "outperforms" or "improves" needs >=3 seeds or a supported pre-registered predicate.
+  - "proves" needs proof evidence.
+  - Weak evidence gets plain wording. Strong evidence must not be hedged away.
+- **Do not re-propose a graveyard idea** without pre-registering what new result would justify it.
+- **Work that does not serve the recorded question is a tangent.** Say so and ask before pursuing it.
+- **Never edit `.warrant/` or logs attached as evidence.** Hashes detect it, and the claim turns red.

@@ -11,6 +11,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from . import falsify
+from . import provenance as prov
 
 GREEN, YELLOW, RED = "green", "yellow", "red"
 
@@ -21,7 +22,6 @@ _WIN = re.compile(r"\b(outperform\w*|beats?|better than|improve[sd]?|improvement
 _ABSOLUTE = re.compile(r"\b(always|never|guarantee[sd]?|definitive(ly)?|clearly|obviously|undeniabl[ey])\b", re.I)
 _HEDGE = re.compile(r"\b(may|might|could|possibly|perhaps|suggests?|appears? to)\b", re.I)
 
-_NUM = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?%?")
 
 
 def sha256_file(path: str) -> str | None:
@@ -31,27 +31,9 @@ def sha256_file(path: str) -> str | None:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def numbers_in(text: str) -> list[str]:
-    """Numbers worth tracing. Skips bare small integers and year-like values."""
-    out = []
-    for m in _NUM.findall(text or ""):
-        core = m.rstrip("%").lstrip("+-")
-        if "." not in core and not m.endswith("%"):
-            v = int(core)
-            if v < 10 or 1900 <= v <= 2100:
-                continue  # counts, list items, years: too noisy to trace
-        out.append(m)
-    return out
-
-
-def _traced(token: str, known: list[float]) -> bool:
-    core = token.rstrip("%")
-    val = float(core)
-    dec = len(core.split(".")[1]) if "." in core else 0
-    tol = 0.5 * 10 ** -dec  # rounding the writer could have done
-    # same value, or the same value written as a percent / fraction
-    cands = [(val, tol), (val / 100, tol / 100), (val * 100, tol * 100)]
-    return any(abs(c - k) <= t + 1e-12 for c, t in cands for k in known)
+def _in_source(value: str, nums: list[float]) -> bool:
+    t = prov._token(value)
+    return any(lo <= n <= hi for n in nums for lo, hi in prov.windows(t))
 
 
 def _run_check(ev: dict) -> tuple[str, list[str]]:
@@ -63,10 +45,9 @@ def _run_check(ev: dict) -> tuple[str, list[str]]:
         return RED, [f"log not found: {log}"]
     if ev.get("sha") and now != ev["sha"]:
         return RED, [f"log changed after it was attached: {log}"]
-    text = Path(log).read_text(errors="replace")
-    logged = [float(x.rstrip("%")) for x in _NUM.findall(text)]
+    logged = prov.source_numbers(Path(log).read_text(errors="replace"))
     missing = [f"{k}={v}" for k, v in (ev.get("metrics") or {}).items()
-               if not _traced(str(v), logged)]
+               if not _in_source(repr(float(v)), logged)]
     if missing:
         return RED, [f"metric not found in log: {', '.join(missing)}"]
     return GREEN, []
@@ -93,6 +74,10 @@ def evaluate(claim: dict) -> dict:
             s, why = _run_check(ev)
             verified |= s == GREEN
             reasons += [(s, w) for w in why]
+        elif t == "cite" and ev.get("check"):
+            s, why = ev["check"]["status"], ev["check"]["why"]
+            verified |= s == GREEN
+            reasons += [] if s == GREEN else [(s, f"citation {ev.get('ref')}: {why}")]
         else:
             reasons.append((YELLOW, f"{t} evidence not machine-checked yet"))
 
@@ -130,9 +115,9 @@ def evaluate(claim: dict) -> dict:
     return {"status": status, "reasons": [w for _, w in reasons], "notes": notes}
 
 
-def known_numbers(state: dict) -> list[float]:
-    """Every number the record can account for: metrics, logs, predicates, results."""
-    known: list[float] = []
+def record_numbers(state: dict) -> list[float]:
+    """Numbers held in the record itself: question, metrics, logs, predicates, results."""
+    known: list[float] = prov.source_numbers(state.get("question") or "")
     for c in state["claims"].values():
         for ev in c["evidence"]:
             for k in ("seeds", "p", "std"):
@@ -140,7 +125,7 @@ def known_numbers(state: dict) -> list[float]:
                     known.append(float(ev[k]))
             known += [float(v) for v in (ev.get("metrics") or {}).values()]
             if ev.get("log") and Path(ev["log"]).is_file():
-                known += [float(x.rstrip("%")) for x in _NUM.findall(Path(ev["log"]).read_text(errors="replace"))]
+                known += prov.source_numbers(Path(ev["log"]).read_text(errors="replace"))
         for key in ("predict", "result"):
             blob = c.get(key) or {}
             for d in (blob.get("observed"), blob.get("baseline")):
@@ -152,21 +137,53 @@ def known_numbers(state: dict) -> list[float]:
     return known
 
 
-def untraced_numbers(text: str, state: dict) -> list[str]:
-    known = known_numbers(state)
-    return [n for n in numbers_in(text) if not _traced(n, known)]
+def trace_text(text: str, rec, state: dict | None = None):
+    """[(token, (label, how) | None)] for every reported number in `text`."""
+    state = state or rec.state()
+    mem = record_numbers(state)
+
+    def find(t):
+        rs = prov.windows(t)
+        if any(lo <= n <= hi for n in mem for lo, hi in rs):
+            return "the warrant record"
+        hit = rec.find_number(rs)
+        return f"observation #{hit[0]}: {hit[1]}" if hit else None
+
+    return prov.trace_all(text, find, rec.key_means())
+
+
+def untraced_numbers(text: str, rec, state: dict | None = None) -> list[str]:
+    return [t.raw for t, h in trace_text(text, rec, state) if h is None]
+
+
+_STOP = set("a an the of on in to for with and or is are be by over than vs our we it this that "
+             "at as from into using use via its their".split())
+
+
+def _content_words(s: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z][a-z0-9_-]+", s):
+        if w in _STOP:
+            continue
+        for suf in ("ing", "es", "ed", "s"):
+            if w.endswith(suf) and len(w) - len(suf) >= 4:
+                w = w[: -len(suf)]
+                break
+        out.add(w)
+    return out
 
 
 def graveyard_match(idea: str, state: dict, threshold: float = 0.6) -> dict | None:
     """Closest dead idea if `idea` looks like a re-proposal."""
     a = idea.lower()
-    wa = set(re.findall(r"\w+", a))
+    wa = _content_words(a)
     best, score = None, 0.0
     for g in state["graveyard"]:
         b = g["idea"].lower()
-        wb = set(re.findall(r"\w+", b))
-        jac = len(wa & wb) / max(1, len(wa | wb))
-        s = max(SequenceMatcher(None, a, b).ratio(), jac)
+        wb = _content_words(b)
+        # containment: the dead idea's core words reappearing inside a new, longer idea
+        cont = len(wa & wb) / max(1, min(len(wa), len(wb)))
+        s = max(SequenceMatcher(None, a, b).ratio(), cont)
         if s > score:
             best, score = g, s
     return best if score >= threshold else None
