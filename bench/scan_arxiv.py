@@ -19,7 +19,7 @@ from warrant import audit, cites  # noqa: E402
 
 def recent_ids(cat: str, n: int) -> list[tuple[str, str]]:
     """Newest submissions from the arXiv listing page (the export API throttles hard)."""
-    code, body = cites._get(f"https://arxiv.org/list/{urllib.parse.quote(cat)}/new?skip=0&show={max(n, 25)}",
+    code, body = cites._get(f"https://arxiv.org/list/{urllib.parse.quote(cat)}/new?skip=0&show=250",
                             tries=6, timeout=60)
     if code != 200:
         print(f"skipping {cat}: listing HTTP {code}", flush=True)
