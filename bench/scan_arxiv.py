@@ -20,7 +20,7 @@ from warrant import audit, cites  # noqa: E402
 def recent_ids(cat: str, n: int) -> list[tuple[str, str]]:
     q = urllib.parse.urlencode({"search_query": f"cat:{cat}", "sortBy": "submittedDate",
                                 "sortOrder": "descending", "max_results": n})
-    code, body = cites._get("https://export.arxiv.org/api/query?" + q, timeout=60)
+    code, body = cites._get("https://export.arxiv.org/api/query?" + q, tries=8, timeout=60)
     if code != 200:
         raise SystemExit(f"arXiv listing failed for {cat}: HTTP {code}")
     out = []
