@@ -1,20 +1,60 @@
 <div align="center">
 
-# warrant
-
-### Claude can't make up numbers or citations in your research anymore.
-
-Every number Claude reports must trace to a command that actually ran.<br>
-Every citation is checked against real registries. No model is involved, just code.
-
-[![License: MIT](https://img.shields.io/badge/license-MIT-1f7a4d)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab)](pyproject.toml)
-[![Zero dependencies](https://img.shields.io/badge/dependencies-0-1f7a4d)](pyproject.toml)
-[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](#install)
-
 <img src="docs/hero.svg" alt="A Claude write-up with five numbers highlighted green, traced to the training run, and two red numbers that no run produced" width="820">
 
+# no source, no number.
+
+**warrant stops your AI from making up numbers or citations in research. Code checks every one. No model judges.**
+
+<a href="https://github.com/ItsShreyamHere/warrant/stargazers"><img src="https://img.shields.io/github/stars/ItsShreyamHere/warrant?style=flat-square&color=1f7a4d" alt="Stars"></a>
+<a href="#install"><img src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square" alt="Claude Code plugin"></a>
+<a href="#works-with"><img src="https://img.shields.io/badge/skill-any_Agent_Skills_agent-555?style=flat-square" alt="Agent Skills"></a>
+<a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-1f7a4d?style=flat-square" alt="Zero dependencies"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1f7a4d?style=flat-square" alt="MIT"></a>
+
+<table>
+<tr>
+<td align="center" width="25%"><h3>0 model calls</h3>every verdict is plain code<br><sub><a href="#how-it-works">how it works</a></sub></td>
+<td align="center" width="25%"><h3>4 registries</h3>doi.org · arXiv · OpenAlex · Crossref<br><sub>checked live, cached</sub></td>
+<td align="center" width="25%"><h3>~100 tokens</h3>per session; hooks add 0<br><sub>per <code>claude plugin details</code></sub></td>
+<td align="center" width="25%"><h3>1 command</h3>to audit any arXiv paper's references<br><sub><a href="#try-it-on-any-paper-first-10-seconds-no-setup">try it</a></sub></td>
+</tr>
+</table>
+
+*Run first. Report second. Cite what exists.*
+
+**[Install](#install) · [Try on any paper](#try-it-on-any-paper-first-10-seconds-no-setup) · [Before / after](#before--after) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
+
 </div>
+
+---
+
+## Before / after
+
+<table>
+<tr>
+<th width="50%">Claude alone</th>
+<th width="50%">Claude + warrant</th>
+</tr>
+<tr>
+<td valign="top">
+
+> Label smoothing improves accuracy to **0.874** vs 0.809, consistent with Müller et al. (doi 10.48550/arXiv.1906.99999).
+
+A number nobody ran. A DOI that doesn't exist. Both look fine.
+
+</td>
+<td valign="top">
+
+> Label smoothing reached **0.812** mean val acc over 3 seeds (`train.py`, seeds 0–2) vs **0.796** baseline. Müller et al. study when this helps (arXiv:1906.02629); their numbers were not reproduced here.
+
+Every number traced to a run or marked `~`. The citation resolves.
+
+</td>
+</tr>
+</table>
+
+**Same question. One answer you can put in a paper.**
 
 ---
 
@@ -103,7 +143,19 @@ Claude then runs the experiment, or marks the number as an estimate, and fixes t
 warrant init "Does label smoothing help on our 5k-example setup?"
 ```
 
-That's it. Hooks stay silent in projects without `warrant init`. You need Python 3.10+ on macOS, Linux or Windows. The CLI (`pip install warrant-research`) is optional, because the hooks ship with the plugin.
+That's it. Hooks stay silent in projects without `warrant init`.
+
+### Works with
+
+| | Claude Code | Any agent with Agent Skills | Any terminal / CI |
+|---|:---:|:---:|:---:|
+| Number tracing on every reply (hooks) | ✅ | — | — |
+| Live citation checks on every reply (hooks) | ✅ | — | — |
+| Skill: pre-registration, wording rules, workflow | ✅ | ✅ copy `skills/warrant/` | — |
+| `audit` / `cites` / `trace` / `report` CLI | ✅ | ✅ | ✅ `pip install warrant-research` |
+| GitHub Action | — | — | ✅ |
+
+The automatic enforcement uses Claude Code hooks. You need Python 3.10+ on macOS, Linux or Windows. The CLI (`pip install warrant-research`) is optional, because the hooks ship with the plugin.
 
 ---
 
