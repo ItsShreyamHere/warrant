@@ -1,10 +1,11 @@
 """`warrant` command line. Claude drives it through the skill; humans can too."""
 import argparse
+import re
 import json
 import sys
 from pathlib import Path
 
-from . import checks, cites, hooks, report
+from . import audit, checks, cites, hooks, report
 from .record import Record
 
 ICON = {"green": "OK ", "yellow": "?? ", "red": "XX "}
@@ -193,6 +194,39 @@ def cmd_cites(a, rec):
         sys.exit(1)
 
 
+def cmd_audit(a, rec):
+    src = a.target
+    m = re.search(r"(\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?/\d{7})", src)
+    if Path(src).is_file():
+        text = Path(src).read_text(encoding="utf-8", errors="replace")
+        files = {src: text}
+    elif m:
+        print(f"fetching arXiv:{m.group(1)} source ...", file=sys.stderr)
+        files = audit.fetch_arxiv_source(m.group(1))
+    else:
+        raise SystemExit("give an arXiv id/URL or a .bib/.bbl/.tex file")
+    refs = audit.refs_from_files(files)
+    if not refs:
+        raise SystemExit("no references found")
+    print(f"checking {len(refs)} references against doi.org, arXiv, OpenAlex, Crossref ...", file=sys.stderr)
+    refs = audit.audit(refs)
+    red = [r for r in refs if r.status == "red"]
+    yellow = [r for r in refs if r.status == "yellow"]
+    if a.json:
+        print(json.dumps([r.__dict__ for r in refs], indent=1))
+    else:
+        for r in red:
+            print(f"XX  [{r.key}] {r.title or r.raw[:120]}\n      {r.why}")
+        if a.all:
+            for r in yellow:
+                print(f"??  [{r.key}] {r.title or r.raw[:120]}\n      {r.why}")
+        print(f"\n{len(refs)} references: {len(refs) - len(red) - len(yellow)} verified, "
+              f"{len(yellow)} unchecked, {len(red)} not found anywhere")
+        if red:
+            print("Not found does not prove fabrication: check these by hand before accusing anyone.")
+    return 1 if red else 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="warrant", description="Keep research with Claude honest.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -263,6 +297,12 @@ def main(argv=None) -> int:
     s.add_argument("file")
     s.set_defaults(fn=cmd_cites)
 
+    s = sub.add_parser("audit", help="check every reference in a paper (arXiv id/URL or .bib/.bbl/.tex)")
+    s.add_argument("target")
+    s.add_argument("--all", action="store_true", help="also list references that could not be checked")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_audit)
+
     s = sub.add_parser("hook", help="Claude Code hook entry point")
     s.add_argument("name", choices=sorted(hooks.HANDLERS))
     s.set_defaults(fn=None)
@@ -270,5 +310,4 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "hook":
         return hooks.run(a.name)
-    a.fn(a, Record())
-    return 0
+    return a.fn(a, Record()) or 0

@@ -2,6 +2,28 @@
 
 **Claude can't make up numbers or citations in your research anymore.**
 
+## Try it on any paper first: 10 seconds, no setup
+
+```
+pip install warrant-research
+warrant audit 1706.03762          # any arXiv id or URL, or your own refs.bib / paper.bbl
+```
+
+```
+XX  [fake1] Recursive Spectral Gating Improves Long-Context Retrieval in Sparse Mixture Transformers
+      no work with this title in OpenAlex or Crossref
+XX  [fake2] Attention is all you need
+      identifier does not exist (the title is real)
+
+3 references: 1 verified, 0 unchecked, 2 not found anywhere
+```
+
+That's a real run on a test `.bib` with two planted fakes.
+
+Every reference is checked against doi.org, arXiv, OpenAlex and Crossref. The paper's LaTeX source is read in memory and never unpacked to disk. "Not found" means no registry knows the work: check those by hand before accusing anyone. Run it on your own paper before a reviewer does.
+
+## Then keep it from happening in your own work
+
 warrant is a Claude Code plugin that supervises research sessions. Install it, run `warrant init`, and keep working. From then on:
 
 - **Every number Claude reports must come from something that actually ran.** Hooks capture each command output and file Claude reads. Before a reply finishes, every decimal and percentage in it is traced back to its source, within rounding, or to a difference, ratio or mean of traced values. Untraced numbers block the reply.

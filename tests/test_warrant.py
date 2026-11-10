@@ -309,3 +309,28 @@ def test_doi_cleanup_regressions():
     assert cites.clean_doi("10.1016/S0140-6736(20)30183-5).") == "10.1016/S0140-6736(20)30183-5"
     found = [m.group(1) for m in cites._DOI.finditer("DOI `10.1109/CVPR.2016.90` here")]
     assert [cites.clean_doi(x) for x in found] == ["10.1109/CVPR.2016.90"]
+
+
+def test_audit_parses_bbl_and_bib():
+    from warrant import audit
+    bbl = (r"\begin{thebibliography}{2}" "\n"
+           r"\bibitem[He et~al.(2016)]{he2016}" "\nK.~He, X.~Zhang.\n"
+           r"\newblock Deep residual learning for image recognition." "\n"
+           r"\newblock In \emph{CVPR}, 2016. doi:10.1109/CVPR.2016.90" "\n"
+           r"\end{thebibliography}")
+    r = audit.parse_bbl(bbl)[0]
+    assert (r.key, r.title, r.doi) == ("he2016", "Deep residual learning for image recognition", "10.1109/CVPR.2016.90")
+    b = audit.parse_bib("@article{x,\n  title={Highway {N}etworks},\n  eprint={1505.00387},\n}\n")[0]
+    assert (b.title, b.arxiv) == ("Highway N etworks".replace("N e", "Ne"), "1505.00387")
+
+
+def test_audit_flags_real_title_with_dead_doi(monkeypatch):
+    from warrant import audit
+    monkeypatch.setattr(cites, "resolve_doi", lambda d: {"status": "red", "why": "DOI does not exist"})
+    monkeypatch.setattr(cites, "search_title", lambda t: {"status": "green", "why": "title found", "title": t})
+    r = audit.check_ref(audit.Ref(key="k", title="Attention is all you need", doi="10.1/none"))
+    assert r.status == "red" and "title is real" in r.why
+    monkeypatch.setattr(cites, "search_title", lambda t: {"status": "yellow", "why": "OpenAlex unreachable"})
+    monkeypatch.setattr(audit, "search_crossref", lambda t: {"status": "yellow", "why": "Crossref unreachable"})
+    r = audit.check_ref(audit.Ref(key="k", title="Some real but unreachable title"))
+    assert r.status == "yellow"  # unreachable registries never accuse

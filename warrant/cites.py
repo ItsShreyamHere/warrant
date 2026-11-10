@@ -9,6 +9,7 @@ Network failure is never red: an unreachable registry must not accuse anyone.
 Results are cached in `.warrant/cites.json`.
 """
 import json
+import time
 import os
 import re
 import urllib.error
@@ -32,15 +33,22 @@ def _offline() -> bool:
     return os.environ.get("WARRANT_OFFLINE") == "1"
 
 
-def _get(url: str) -> tuple[int, str]:
+def _get(url: str, tries: int = 4) -> tuple[int, str]:
+    """GET with backoff on rate limits (429/503). Registries throttle bursts."""
     req = urllib.request.Request(url, headers=UA)
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return r.status, r.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        return e.code, ""
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return 0, ""
+    code = 0
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                return r.status, r.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            code = e.code
+            if code not in (429, 500, 502, 503, 504):
+                return code, ""
+        except (urllib.error.URLError, TimeoutError, OSError):
+            code = 0
+        time.sleep(1.5 * 2 ** i)
+    return code, ""
 
 
 def _norm_title(s: str) -> str:
@@ -220,7 +228,7 @@ def bib_entries(text: str) -> list[dict]:
         body = m.group(2)
 
         def field(name):
-            f = re.search(name + r"\s*=\s*[{\"](.*?)[}\"]\s*,?\s*\n", body, re.S | re.I)
+            f = re.search(r"\b" + name + r"\s*=\s*[{\"](.*?)[}\"]\s*(?:,|\n|$)", body, re.S | re.I)
             return re.sub(r"[{}]", "", re.sub(r"\s+", " ", f.group(1))).strip() if f else None
         out.append({"key": m.group(1), "title": field("title"), "doi": field("doi"), "eprint": field("eprint")})
     return out
