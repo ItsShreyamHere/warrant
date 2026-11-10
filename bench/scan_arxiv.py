@@ -18,18 +18,14 @@ from warrant import audit, cites  # noqa: E402
 
 
 def recent_ids(cat: str, n: int) -> list[tuple[str, str]]:
-    q = urllib.parse.urlencode({"search_query": f"cat:{cat}", "sortBy": "submittedDate",
-                                "sortOrder": "descending", "max_results": n})
-    code, body = cites._get("https://export.arxiv.org/api/query?" + q, tries=8, timeout=60)
+    """Newest submissions from the arXiv listing page (the export API throttles hard)."""
+    code, body = cites._get(f"https://arxiv.org/list/{urllib.parse.quote(cat)}/new?skip=0&show={max(n, 25)}",
+                            tries=6, timeout=60)
     if code != 200:
-        raise SystemExit(f"arXiv listing failed for {cat}: HTTP {code}")
-    out = []
-    for entry in re.findall(r"<entry>(.*?)</entry>", body, re.S):
-        aid = re.search(r"<id>http://arxiv.org/abs/([^<]+?)(v\d+)?</id>", entry)
-        title = re.search(r"<title>(.*?)</title>", entry, re.S)
-        if aid:
-            out.append((aid.group(1), re.sub(r"\s+", " ", title.group(1)).strip() if title else ""))
-    return out
+        print(f"skipping {cat}: listing HTTP {code}", flush=True)
+        return []
+    ids = list(dict.fromkeys(re.findall(r'href\s*=\s*"/abs/(\d{4}\.\d{4,5})', body)))
+    return [(aid, "") for aid in ids[:n]]
 
 
 def main() -> None:
