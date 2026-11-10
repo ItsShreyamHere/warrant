@@ -159,6 +159,7 @@ def statcheck(text: str, alpha: float = 0.05) -> list[dict]:
     """Every APA-style test in `text`, with its recomputed p and a verdict."""
     out = []
     corrected_paper = bool(_CORRECTED.search(text))
+    one_tailed_paper = bool(re.search(r"one[- ]?(?:tailed|sided)|directional (?:test|hypothes)", text, re.I))
     for kind, rx in _TESTS:
         for m in rx.finditer(text):
             g = m.groups()
@@ -188,14 +189,21 @@ def statcheck(text: str, alpha: float = 0.05) -> list[dict]:
             # reported p above the raw p in a paper that adjusts for multiple comparisons: an
             # adjusted p-value, not an error (statcheck's best-known false positive)
             adjusted = not ok and corrected_paper and p_rep > hi
-            if adjusted:
+            # one-tailed t/z/r: half the two-tailed p, when the paper says it tests directionally
+            one_tailed = False
+            if not ok and not adjusted and one_tailed_paper and kind in ("t", "z", "r"):
+                if op == "=":
+                    one_tailed = lo / 2 <= p_rep + p_half and hi / 2 >= p_rep - p_half
+                elif op in "<≤":
+                    one_tailed = lo / 2 < p_rep
+            if adjusted or one_tailed:
                 ok = True
             gross = (not ok) and (rep_sig != (p_mid < alpha))
             shown = p_raw + (f"e{exp}" if exp else "")
             out.append({"test": kind, "text": m.group(0).strip(), "reported_p": f"p {op} {shown}",
                         "computed_p": round(p_mid, 4) if p_mid >= 1e-4 else float(f"{p_mid:.2e}"),
                         "consistent": ok, "gross": gross and not ok, "comp_sig": comp_sig,
-                        "adjusted": adjusted})
+                        "adjusted": adjusted, "one_tailed": one_tailed})
     return out
 
 
