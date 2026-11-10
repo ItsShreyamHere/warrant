@@ -1,0 +1,230 @@
+"""`warrant` command line. Claude drives it through the skill; humans can too."""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from . import checks, hooks
+from .record import Record
+
+ICON = {"green": "OK ", "yellow": "?? ", "red": "XX "}
+
+
+def _kv(pairs: list[str] | None) -> dict:
+    out = {}
+    for p in pairs or []:
+        k, _, v = p.partition("=")
+        if not _:
+            raise SystemExit(f"expected name=value, got: {p}")
+        out[k.strip()] = float(v)
+    return out
+
+
+def _claim_or_die(st: dict, cid: int) -> dict:
+    c = st["claims"].get(cid)
+    if not c:
+        raise SystemExit(f"no claim #{cid}")
+    return c
+
+
+def cmd_question(a, rec):
+    rec.append("question", text=a.text, hypothesis=a.hypothesis)
+    print(f"question set: {a.text}")
+
+
+def cmd_claim(a, rec):
+    st = rec.state()
+    dead = checks.graveyard_match(a.text, st)
+    rec.append("claim", text=a.text)
+    cid = len(st["claims"]) + 1
+    print(f"claim #{cid}")
+    if dead:
+        print(f"warning: resembles dead idea #{dead['id']}: {dead['idea']} ({dead['why']}). "
+              "Pre-register what result would justify revisiting it (`warrant predict`).")
+
+
+def cmd_evidence(a, rec):
+    _claim_or_die(rec.state(), a.claim)
+    body = {"claim": a.claim, "type": a.type}
+    if a.type == "run":
+        if not a.log:
+            raise SystemExit("run evidence needs --log")
+        sha = checks.sha256_file(a.log)
+        if sha is None:
+            raise SystemExit(f"log not found: {a.log}")
+        body.update(log=str(Path(a.log).resolve()), sha=sha, metrics=_kv(a.metric),
+                    seeds=a.seeds, p=a.p, std=a.std)
+    else:
+        body.update(ref=a.ref, quote=a.quote, note=a.note)
+    rec.append("evidence", **body)
+    c = _claim_or_die(rec.state(), a.claim)
+    r = checks.evaluate(c)
+    print(f"claim #{a.claim}: {r['status']}" + "".join(f"\n  - {x}" for x in r["reasons"]))
+
+
+def cmd_predict(a, rec):
+    c = _claim_or_die(rec.state(), a.claim)
+    if c.get("result"):
+        raise SystemExit("this claim already has a result; pre-registration must come first")
+    pred = json.loads(a.predicate)
+    if isinstance(pred, dict):
+        pred = [pred]
+    checks.judge(pred, a.mode, {}, {})  # validates clauses, raises on bad ones
+    rec.append("predict", claim=a.claim, predicate=pred, mode=a.mode)
+    print(f"pre-registered on claim #{a.claim}: refuted if {a.mode} of {json.dumps(pred)}")
+
+
+def cmd_result(a, rec):
+    c = _claim_or_die(rec.state(), a.claim)
+    p = c.get("predict")
+    if not p:
+        raise SystemExit("no pre-registered predicate on this claim (`warrant predict` first)")
+    obs, base = _kv(a.observed), _kv(a.baseline)
+    verdict, unresolved = checks.judge(p["predicate"], p["mode"], obs, base)
+    rec.append("result", claim=a.claim, observed=obs, baseline=base, verdict=verdict, unresolved=unresolved)
+    if verdict == "refuted":
+        rec.append("kill", idea=c["text"], why="refuted by pre-registered predicate", claim=a.claim)
+    print(f"claim #{a.claim}: {verdict}" + (f" (missing: {', '.join(unresolved)})" if unresolved else ""))
+
+
+def cmd_kill(a, rec):
+    rec.append("kill", idea=a.idea, why=a.why)
+    print(f"buried: {a.idea}")
+
+
+def cmd_retract(a, rec):
+    _claim_or_die(rec.state(), a.claim)
+    rec.append("retract", claim=a.claim, why=a.why)
+    print(f"claim #{a.claim} retracted")
+
+
+def _rows(st):
+    for c in st["claims"].values():
+        if not c["retracted"]:
+            yield c, checks.evaluate(c)
+
+
+def cmd_status(a, rec):
+    st = rec.state()
+    if a.json:
+        print(json.dumps({"question": st["question"], "hypothesis": st["hypothesis"],
+                          "claims": [{"id": c["id"], "text": c["text"], **r} for c, r in _rows(st)],
+                          "graveyard": st["graveyard"], "chain_ok": rec.verify_chain()}, indent=2))
+        return
+    print(f"Question: {st['question'] or '(none: run `warrant question`)'}")
+    if st["hypothesis"]:
+        print(f"Hypothesis: {st['hypothesis']}")
+    for c, r in _rows(st):
+        print(f"{ICON[r['status']]}#{c['id']} {c['text']}")
+        for x in r["reasons"] + r["notes"]:
+            print(f"     - {x}")
+    if st["graveyard"]:
+        print("Graveyard:")
+        for g in st["graveyard"]:
+            print(f"  + {g['idea']} ({g['why']})")
+    if not rec.verify_chain():
+        print("WARNING: record hash chain is broken; history was edited.")
+
+
+def cmd_report(a, rec):
+    st = rec.state()
+    out = [f"# Research record\n\n**Question:** {st['question'] or '-'}\n"]
+    if st["hypothesis"]:
+        out.append(f"**Hypothesis:** {st['hypothesis']}\n")
+    rows = list(_rows(st))
+    tally = {s: sum(1 for _, r in rows if r["status"] == s) for s in ("green", "yellow", "red")}
+    out.append(f"**Claims:** {tally['green']} verified, {tally['yellow']} unverified, {tally['red']} flagged\n")
+    out.append("| | # | claim | why |\n|---|---|---|---|")
+    for c, r in rows:
+        why = "; ".join(r["reasons"] + r["notes"]).replace("|", "/") or "evidence checks out"
+        out.append(f"| {r['status']} | {c['id']} | {c['text'].replace('|', '/')} | {why} |")
+    if st["graveyard"]:
+        out.append("\n## Graveyard\n")
+        out += [f"- {g['idea']} ({g['why']})" for g in st["graveyard"]]
+    out.append(f"\nRecord hash chain intact: {'yes' if rec.verify_chain() else 'NO'}\n")
+    text = "\n".join(out)
+    if a.output:
+        Path(a.output).write_text(text, encoding="utf-8")
+        print(f"wrote {a.output}")
+    else:
+        print(text)
+
+
+def cmd_trace(a, rec):
+    text = sys.stdin.read() if a.file == "-" else Path(a.file).read_text(encoding="utf-8", errors="replace")
+    bad = checks.untraced_numbers(text, rec.state())
+    if bad:
+        print("untraced numbers: " + ", ".join(bad))
+        sys.exit(1)
+    print("every number traces to recorded evidence")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="warrant", description="Keep research with Claude honest.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("question", help="set the research question")
+    s.add_argument("text")
+    s.add_argument("--hypothesis")
+    s.set_defaults(fn=cmd_question)
+
+    s = sub.add_parser("claim", help="record a claim")
+    s.add_argument("text")
+    s.set_defaults(fn=cmd_claim)
+
+    s = sub.add_parser("evidence", help="attach evidence to a claim")
+    s.add_argument("claim", type=int)
+    s.add_argument("--type", choices=["run", "cite", "proof", "data", "note"], default="run")
+    s.add_argument("--log", help="run log file (hashed on attach)")
+    s.add_argument("--metric", action="append", help="name=value, must appear in the log")
+    s.add_argument("--seeds", type=int, default=1)
+    s.add_argument("--p", type=float)
+    s.add_argument("--std", type=float)
+    s.add_argument("--ref", help="DOI / arXiv id / file for cite, proof, data")
+    s.add_argument("--quote")
+    s.add_argument("--note")
+    s.set_defaults(fn=cmd_evidence)
+
+    s = sub.add_parser("predict", help="pre-register a refutation predicate before running")
+    s.add_argument("claim", type=int)
+    s.add_argument("predicate", help='JSON, e.g. \'{"metric":"acc","op":"lt","of":"baseline","margin":0.01}\'')
+    s.add_argument("--mode", choices=["any", "all"], default="any")
+    s.set_defaults(fn=cmd_predict)
+
+    s = sub.add_parser("result", help="record observed metrics; code decides the verdict")
+    s.add_argument("claim", type=int)
+    s.add_argument("--observed", action="append", required=True, help="name=value")
+    s.add_argument("--baseline", action="append", help="name=value")
+    s.set_defaults(fn=cmd_result)
+
+    s = sub.add_parser("kill", help="bury a dead idea in the graveyard")
+    s.add_argument("idea")
+    s.add_argument("--why", default="")
+    s.set_defaults(fn=cmd_kill)
+
+    s = sub.add_parser("retract", help="withdraw a claim")
+    s.add_argument("claim", type=int)
+    s.add_argument("--why", default="")
+    s.set_defaults(fn=cmd_retract)
+
+    s = sub.add_parser("status", help="question, claims with status, graveyard")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_status)
+
+    s = sub.add_parser("report", help="markdown report of every claim")
+    s.add_argument("-o", "--output")
+    s.set_defaults(fn=cmd_report)
+
+    s = sub.add_parser("trace", help="list numbers in a draft that no evidence accounts for")
+    s.add_argument("file", help="draft file, or - for stdin")
+    s.set_defaults(fn=cmd_trace)
+
+    s = sub.add_parser("hook", help="Claude Code hook entry point")
+    s.add_argument("name", choices=sorted(hooks.HANDLERS))
+    s.set_defaults(fn=None)
+
+    a = ap.parse_args(argv)
+    if a.cmd == "hook":
+        return hooks.run(a.name)
+    a.fn(a, Record())
+    return 0

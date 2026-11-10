@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warrant-research"
+version = "0.1.0"
+description = "Keep research with Claude honest: hold the question, check every claim against evidence with code, bury refuted ideas."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["claude-code", "research", "reproducibility", "pre-registration", "llm"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+warrant = "warrant.cli:main"
+
+[tool.setuptools]
+packages = ["warrant"]

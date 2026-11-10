@@ -1,0 +1,15 @@
+{
+  "name": "warrant",
+  "owner": { "name": "warrant" },
+  "metadata": {
+    "description": "Keep research with Claude honest."
+  },
+  "plugins": [
+    {
+      "name": "warrant",
+      "source": "./",
+      "description": "Holds your research question, checks every claim against evidence with code, buries refuted ideas.",
+      "version": "0.1.0"
+    }
+  ]
+}
