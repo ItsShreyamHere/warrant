@@ -85,6 +85,23 @@ warrant init "Does label smoothing help on our 5k-example setup?"
 
 Needs Python 3.10+. Works on macOS, Linux and Windows.
 
+## See where every number in your draft came from
+
+```
+warrant report --draft results.md     # -> warrant-draft.html
+```
+
+Every number is highlighted. Green numbers show, on hover, the exact command output line they came from: a value, a mean of per-seed values, or a difference of two traced numbers. Red numbers came from nowhere. From a real run:
+
+```
+OK         0.812  mean: observation #2: Bash: python train.py --smoothing 0.1 --seeds 3
+OK        81.79%  exact: observation #2: Bash: python train.py --smoothing 0.1 --seeds 3
+OK         0.796  mean: observation #2: Bash: python train.py --smoothing 0.1 --seeds 3
+OK         0.016  derived: derived from other reported numbers
+XX          2.3%  untraced        <- "matches the 2.3% gain reported by ..." (never checked)
+XX          0.84  untraced        <- "we expect 0.84 with longer training" (a guess)
+```
+
 ## Check any draft, even one not written with Claude
 
 ```

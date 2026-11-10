@@ -16,6 +16,8 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+from .provenance import window_means
+
 KINDS = {"question", "claim", "evidence", "predict", "result", "kill", "retract", "observe", "wrote"}
 
 _SCHEMA = """
@@ -30,6 +32,8 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS obs_nums (value REAL NOT NULL, obs INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS obs_nums_v ON obs_nums(value);
 CREATE TABLE IF NOT EXISTS obs_keys (key TEXT NOT NULL, value REAL NOT NULL, obs INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS obs_means (label TEXT NOT NULL, value REAL NOT NULL, obs INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS obs_means_v ON obs_means(value);
 """
 
 MAX_OBS_BYTES = 2_000_000
@@ -92,16 +96,25 @@ class Record:
             c.executemany("INSERT INTO obs_nums VALUES (?,?)", [(v, seq) for v in nums[:MAX_OBS_NUMS]])
             c.executemany("INSERT INTO obs_keys VALUES (?,?,?)",
                           [(k, v, seq) for k, vs in keyed.items() for v in vs[:1000]])
+            c.executemany("INSERT INTO obs_means VALUES (?,?,?)",
+                          [(lab, v, seq) for lab, v in window_means(text)])
             return seq
 
     def find_number(self, ranges: list[tuple[float, float]]) -> tuple[int, str] | None:
         """Most recent observation holding a value inside any of `ranges`."""
+        return self._find("obs_nums", ranges)
+
+    def find_mean(self, ranges: list[tuple[float, float]]) -> tuple[int, str] | None:
+        """Most recent observation with a plausible reported mean inside `ranges`."""
+        return self._find("obs_means", ranges)
+
+    def _find(self, table: str, ranges: list[tuple[float, float]]) -> tuple[int, str] | None:
         if not self.exists():
             return None
         q = " OR ".join("(value BETWEEN ? AND ?)" for _ in ranges)
         args = [x for r in ranges for x in r]
         with closing(self._conn()) as c:
-            row = c.execute(f"SELECT obs FROM obs_nums WHERE {q} ORDER BY obs DESC LIMIT 1", args).fetchone()
+            row = c.execute(f"SELECT obs FROM {table} WHERE {q} ORDER BY obs DESC LIMIT 1", args).fetchone()
             if not row:
                 return None
             body = c.execute("SELECT body FROM events WHERE seq = ?", (row[0],)).fetchone()

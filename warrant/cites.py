@@ -33,13 +33,13 @@ def _offline() -> bool:
     return os.environ.get("WARRANT_OFFLINE") == "1"
 
 
-def _get(url: str, tries: int = 4) -> tuple[int, str]:
+def _get(url: str, tries: int = 4, timeout: float = TIMEOUT) -> tuple[int, str]:
     """GET with backoff on rate limits (429/503). Registries throttle bursts."""
     req = urllib.request.Request(url, headers=UA)
     code = 0
     for i in range(tries):
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.status, r.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             code = e.code

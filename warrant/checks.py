@@ -147,7 +147,10 @@ def trace_text(text: str, rec, state: dict | None = None):
         if any(lo <= n <= hi for n in mem for lo, hi in rs):
             return "the warrant record"
         hit = rec.find_number(rs)
-        return f"observation #{hit[0]}: {hit[1]}" if hit else None
+        if hit:
+            return f"observation #{hit[0]}: {hit[1]}"
+        hit = rec.find_mean(rs)
+        return (f"observation #{hit[0]}: {hit[1]}", "mean") if hit else None
 
     return prov.trace_all(text, find, rec.key_means())
 

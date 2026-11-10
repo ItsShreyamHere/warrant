@@ -143,8 +143,8 @@ def trace_all(text: str, find, means: list[tuple[str, float]]) -> list[tuple[Tok
     tokens = extract(text)
     result: list[tuple[Token, tuple[str, str] | None]] = []
     for t in tokens:
-        label = find(t)
-        hit = (label, "exact") if label else None
+        res = find(t)
+        hit = res if isinstance(res, tuple) else ((res, "exact") if res else None)
         if hit is None:
             hit = next(((lab, "mean") for lab, v in means if _hit(v, t)), None)
         result.append((t, hit))
@@ -159,3 +159,22 @@ def trace_all(text: str, find, means: list[tuple[str, float]]) -> list[tuple[Tok
                 if result[i][1]:
                     break
     return result
+
+
+def window_means(text: str, max_len: int = 12) -> list[tuple[str, float]]:
+    """Means a writer plausibly reports, kept narrow so they don't trace everything:
+    consecutive values of one key (per-seed `acc=` lines) and consecutive numbers on one line."""
+    out: list[tuple[str, float]] = []
+    seq: dict[str, list[float]] = {}
+    for k, v in _KEYED.findall(text or ""):
+        seq.setdefault(k.lower(), []).append(float(v))
+    groups = [(f"mean of consecutive {k} values", vs) for k, vs in seq.items()]
+    groups += [("mean of numbers on one line", source_numbers(line)) for line in (text or "").splitlines()]
+    for label, vs in groups:
+        for i in range(len(vs)):
+            s = 0.0
+            for j in range(i, min(i + max_len, len(vs))):
+                s += vs[j]
+                if j > i:
+                    out.append((label, s / (j - i + 1)))
+    return out[:5000]

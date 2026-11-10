@@ -141,6 +141,12 @@ def cmd_status(a, rec):
 
 
 def cmd_report(a, rec):
+    if a.draft:
+        out = Path(a.output or "warrant-draft.html")
+        text = Path(a.draft).read_text(encoding="utf-8", errors="replace")
+        out.write_text(report.draft_html(rec, text, Path(a.draft).name), encoding="utf-8")
+        print(f"wrote {out}")
+        return
     if a.html:
         out = Path(a.output or "warrant-report.html")
         out.write_text(report.html(rec), encoding="utf-8")
@@ -286,6 +292,7 @@ def main(argv=None) -> int:
     s = sub.add_parser("report", help="report of every claim (markdown, or --html)")
     s.add_argument("-o", "--output")
     s.add_argument("--html", action="store_true")
+    s.add_argument("--draft", help="render this draft with every number marked traced / untraced")
     s.set_defaults(fn=cmd_report)
 
     s = sub.add_parser("trace", help="list numbers in a draft that no evidence accounts for")
