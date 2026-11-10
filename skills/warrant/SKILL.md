@@ -59,7 +59,7 @@ Report the verdict as given. A refuted idea is buried in the graveyard. A missin
 |---|---|
 | "significant(ly)" | >=3 seeds and p < 0.05 |
 | "improves", "outperforms", "beats" | >=3 seeds, or a supported pre-registered predicate |
-| "proves" | a proof (Lean/SymPy file attached with `--type proof`) |
+| "proves" | a proof a checker accepts: `warrant evidence N --type proof --ref X.lean` (no `sorry`), or a SymPy `.py` with asserts |
 | "always", "never", "clearly" | a reason that holds every time; otherwise drop the word |
 
 Strong evidence should not be hedged into "may slightly help". Weak evidence should not be inflated.
@@ -88,6 +88,7 @@ warrant cites draft.md              # citations in a draft
 warrant trace draft.md --all        # where each number came from
 warrant report --draft draft.md     # HTML: numbers green (hover = source line) or red
 warrant status | warrant report --html
+warrant dashboard                   # live local view for the user
 ```
 
 "Not found anywhere" in `audit` is a lead, not proof. Tell the user to check it by hand before calling a reference fabricated.
