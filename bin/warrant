@@ -1,0 +1,10 @@
+#!/bin/sh
+# Pick whichever Python exists (python3 on macOS/Linux, python on Windows).
+# CLI launcher for the plugin checkout.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+for py in python3 python py; do
+  if command -v "$py" >/dev/null 2>&1 && "$py" -c "import sys; sys.exit(sys.version_info < (3, 10))" 2>/dev/null; then
+    exec "$py" "$DIR/warrant.py" "$@"
+  fi
+done
+exit 0

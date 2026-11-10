@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 330" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs>
+    <style>
+      .bg{fill:#fbfaf7}.card{fill:#fff;stroke:#e6e3dc}.t{fill:#1d1d1b;font-size:15.5px}
+      .m{fill:#6b6a66;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}
+      .ok{fill:#e5f3ea}.okt{fill:#1f7a4d;font-weight:700}.no{fill:#fbe7e5}.not{fill:#b42318;font-weight:700}
+      .tip{fill:#1d1d1b}.tipt{fill:#fbfaf7;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
+      .chipg{fill:#e5f3ea}.chipr{fill:#fbe7e5}
+      @media (prefers-color-scheme:dark){.bg{fill:#141413}.card{fill:#1c1c1a;stroke:#2c2b29}.t{fill:#ecebe6}
+      .m{fill:#9b9a95}.ok,.chipg{fill:#163222}.okt{fill:#5fc68f}.no,.chipr{fill:#3a1a17}.not{fill:#f2877c}
+      .tip{fill:#ecebe6}.tipt{fill:#141413}}
+    </style>
+  </defs>
+  <rect class="bg" width="880" height="330" rx="14"/>
+  <text class="m" x="32" y="40">CLAUDE'S WRITE-UP, CHECKED BY WARRANT</text>
+  <rect class="chipg" x="32" y="56" width="178" height="30" rx="8"/><text class="okt" x="46" y="76" font-size="14">5 traced to a real run</text>
+  <rect class="chipr" x="220" y="56" width="138" height="30" rx="8"/><text class="not" x="234" y="76" font-size="14">2 from nowhere</text>
+  <rect class="card" x="32" y="104" width="816" height="146" rx="12"/>
+  <text class="t" x="54" y="140">Label smoothing (<tspan class="okt">0.1</tspan>) reached a mean validation accuracy of
+    <tspan class="okt">0.812</tspan> across three seeds,</text>
+  <text class="t" x="54" y="172">with the best seed at <tspan class="okt">81.79%</tspan>. The baseline averaged <tspan class="okt">0.796</tspan>, so smoothing adds <tspan class="okt">0.016</tspan>.</text>
+  <text class="t" x="54" y="204">This matches the <tspan class="not">2.3%</tspan> gain reported by Müller et al., and we expect
+    <tspan class="not">0.84</tspan> with longer training.</text>
+  <rect class="tip" x="300" y="222" width="530" height="58" rx="8"/>
+  <text class="tipt" x="314" y="244">mean: observation #2: Bash: python train.py --seeds 3</text>
+  <text class="tipt" x="314" y="264">&gt; seed=0 val_acc=0.8127 | seed=1 0.8064 | seed=2 0.8179</text>
+  <text class="m" x="32" y="312">hover any number: the exact command output it came from. red = no run ever produced it.</text>
+</svg>
