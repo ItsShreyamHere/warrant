@@ -204,7 +204,12 @@ def statcheck(text: str, alpha: float = 0.05) -> list[dict]:
                         "computed_p": round(p_mid, 4) if p_mid >= 1e-4 else float(f"{p_mid:.2e}"),
                         "consistent": ok, "gross": gross and not ok, "comp_sig": comp_sig,
                         "adjusted": adjusted, "one_tailed": one_tailed})
-    return out
+    seen, uniq = set(), []
+    for r in out:  # the same sentence can appear twice (abstract + body, or repeated XML)
+        if r["text"] not in seen:
+            seen.add(r["text"])
+            uniq.append(r)
+    return uniq
 
 
 _GRIM = re.compile(r"\bM\s*=\s*(\d+\.\d+)\s*(?:,\s*SD\s*=\s*\d*\.?\d+\s*)?[,;)]?\s*(?:\(?\s*)?n\s*=\s*(\d+)", re.I)

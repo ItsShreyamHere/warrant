@@ -16,7 +16,7 @@
 <tr>
 <td align="center" width="25%"><h3>13× less reading</h3>evidence cards vs. the cited papers' full text<br><sub>measured on arXiv:1706.03762</sub></td>
 <td align="center" width="25%"><h3>0 trust in quotes</h3>every model verdict must quote the source verbatim, or it's rejected<br><sub><a href="#warrant-review-a-referee-report-in-one-command">how</a></sub></td>
-<td align="center" width="25%"><h3>5 tests recomputed</h3>t · F · χ² · r · z p-values, from scratch, no SciPy<br><sub>statcheck method + GRIM</sub></td>
+<td align="center" width="25%"><h3>2,063 p-values</h3>recomputed across 851 psychology papers. 6 papers' own stats contradict their conclusions<br><sub><a href="bench/RESULTS.md">hand-verified results</a></sub></td>
 <td align="center" width="25%"><h3>0 dependencies</h3>stdlib Python; hooks add 0 tokens<br><sub>~100 tokens/session for the skill</sub></td>
 </tr>
 </table>
@@ -88,7 +88,9 @@ OK card 3: supports: quote found verbatim in the cited paper
 XX card 3: supports: REJECTED: quote is not in the cited paper
 ```
 
-That's a real run on the Transformer paper's citations. The rejected verdict carried a plausible-sounding quote that the cited ByteNet paper never contains. In Claude Code, the skill runs the whole loop: code checks, cards, verdicts, verify. It then writes a referee report where every comment is labelled `[verified by code]`, `[quote-verified]` or `[reviewer judgment]`.
+We ran the statistics checks on 851 open-access psychology papers: 2,063 p-values recomputed. In **6 papers (2.8% of those reporting tests)** a significance decision contradicts the paper's own test statistic, e.g. `t(1350) = 0.150, p = .04` (actually .88). Every one was hand-verified ([results and method](bench/RESULTS.md)).
+
+The verify output above is a real run on the Transformer paper's citations. The rejected verdict carried a plausible-sounding quote that the cited ByteNet paper never contains. In Claude Code, the skill runs the whole loop: code checks, cards, verdicts, verify. It then writes a referee report where every comment is labelled `[verified by code]`, `[quote-verified]` or `[reviewer judgment]`.
 
 > ⭐ **Reviewing papers is about to get a lot faster.** [Star warrant](https://github.com/ItsShreyamHere/warrant/stargazers) so your co-reviewers find it too.
 
