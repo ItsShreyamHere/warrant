@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: <owner>/warrant@v0
+      - uses: ItsShreyamHere/warrant@v0
         with:
           files: refs.bib
 ```
@@ -72,7 +72,7 @@ Research agents grade their own homework. 2026 studies of autonomous research ag
 As a Claude Code plugin:
 
 ```
-/plugin marketplace add <owner>/warrant
+/plugin marketplace add ItsShreyamHere/warrant
 /plugin install warrant@warrant
 ```
 
