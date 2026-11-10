@@ -25,6 +25,10 @@
 
 **[Install](#install) · [Try on any paper](#try-it-on-any-paper-first-10-seconds-no-setup) · [Before / after](#before--after) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
 
+<img src="docs/demo.gif" alt="Claude writes up a result with an invented number and a fake DOI; warrant blocks the reply; Claude runs the experiment and rewrites it with every number traced to the run" width="820">
+
+<sub>The block message is the real hook text for that reply. Rendered by <a href="docs/make_demo_gif.py">docs/make_demo_gif.py</a>.</sub>
+
 </div>
 
 ---
