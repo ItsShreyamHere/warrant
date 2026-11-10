@@ -43,12 +43,24 @@ def _latex_to_text(s: str) -> str:
 
 
 def _ids(ref: Ref, text: str) -> None:
-    m = cites._DOI.search(text)
-    if m:
-        ref.doi = cites.clean_doi(m.group(1))
-    m = cites._ARXIV.search(text) or re.search(r"\b(\d{4}\.\d{4,5})(v\d+)?\b", text)
+    # .bbl files hard-wrap lines and use `%` line continuations, which can split a DOI
+    # in two; join them, then keep the longest candidate (the one that wasn't cut)
+    joined = re.sub(r"%\s*\n\s*", "", text)
+    joined = re.sub(r"(10\.\d{4,9}/\S*?)\s*\n\s*(?=[\w./-]+[}\s,])", r"\1", joined)
+    dois = [cites.clean_doi(m.group(1)) for m in cites._DOI.finditer(joined)]
+    if dois:
+        ref.doi = max(dois, key=len)
+    # only explicit arXiv references: a bare NNNN.NNNNN also matches page numbers
+    m = cites._ARXIV.search(joined) or re.search(r"\\eprint\{(\d{4}\.\d{4,5})", joined)
     if m:
         ref.arxiv = m.group(1)
+
+
+def _title_without_newblock(body: str) -> str | None:
+    """ACL/plain styles: `Authors. 2024. Title. Venue.` -> Title."""
+    t = _latex_to_text(body)
+    m = re.search(r"\b(?:19|20)\d{2}[a-z]?\.\s+(.+?[^A-Z])\.\s", t)
+    return m.group(1).strip() if m and len(m.group(1)) >= 12 else None
 
 
 def parse_bbl(text: str) -> list[Ref]:
@@ -64,6 +76,8 @@ def parse_bbl(text: str) -> list[Ref]:
         blocks = [_latex_to_text(b) for b in re.split(r"\\newblock", body)]
         if len(blocks) >= 2:
             ref.title = blocks[1].rstrip(". ")
+        else:
+            ref.title = _title_without_newblock(body)
         out.append(ref)
     return out
 
@@ -140,23 +154,27 @@ def check_ref(ref: Ref) -> Ref:
             return ref
         id_missing |= r["status"] == "red"
         # unreachable (e.g. arXiv rate limit): fall through to a title search
+    # A dead identifier alone is never "fake": in a parsed bibliography it is far more
+    # often a typo or a line-wrapped DOI. Only a title no registry knows is flagged.
     if not ref.title or len(ref.title) < 12:
-        ref.status, ref.why = ("red", "identifier does not exist") if id_missing else \
-            ("yellow", "no title or identifier to check")
+        ref.status, ref.why = "yellow", ("identifier does not resolve; no title to search" if id_missing
+                                         else "no title or identifier to check")
         return ref
     oa = cites.search_title(ref.title)
     cr = search_crossref(ref.title) if oa["status"] != "green" else {}
     found = oa if oa["status"] == "green" else cr if cr.get("status") == "green" else None
     if found:
-        if id_missing:  # a real paper, but the identifier given for it does not exist
-            ref.status, ref.why = "red", "identifier does not exist (the title is real)"
-        else:
-            ref.status, ref.why = "green", "title found"
+        ref.status, ref.why = ("yellow", "title is real, but its identifier does not resolve") if id_missing \
+            else ("green", "title found")
         ref.found = found.get("title")
         return ref
     # Crossref's fuzzy search always returns something loosely similar, so only a
-    # clear OpenAlex miss plus no Crossref match counts as "not found"
-    if oa["status"] == "red" and cr.get("why") == "not in Crossref":
+    # clear OpenAlex miss plus no Crossref match counts as "not found". Software,
+    # web pages, reports and theses are often not indexed: never flag those.
+    not_indexed = re.search(r"https?://|github|technical report|tech\. rep|thesis|blog|documentation|"
+                            r"manual|preprint|in preparation|personal communication|accessed", ref.raw, re.I)
+    if oa["status"] == "red" and cr.get("why") == "not in Crossref" and len(ref.title.split()) >= 4 \
+            and not not_indexed:
         ref.status, ref.why = "red", "no work with this title in OpenAlex or Crossref"
     else:
         ref.status, ref.why = "yellow", "close but not exact match: " + (oa.get("why") or "")

@@ -329,8 +329,24 @@ def test_audit_flags_real_title_with_dead_doi(monkeypatch):
     monkeypatch.setattr(cites, "resolve_doi", lambda d: {"status": "red", "why": "DOI does not exist"})
     monkeypatch.setattr(cites, "search_title", lambda t: {"status": "green", "why": "title found", "title": t})
     r = audit.check_ref(audit.Ref(key="k", title="Attention is all you need", doi="10.1/none"))
-    assert r.status == "red" and "title is real" in r.why
+    assert r.status == "yellow" and "title is real" in r.why  # broken id is not a fake paper
     monkeypatch.setattr(cites, "search_title", lambda t: {"status": "yellow", "why": "OpenAlex unreachable"})
     monkeypatch.setattr(audit, "search_crossref", lambda t: {"status": "yellow", "why": "Crossref unreachable"})
     r = audit.check_ref(audit.Ref(key="k", title="Some real but unreachable title"))
     assert r.status == "yellow"  # unreachable registries never accuse
+
+
+def test_audit_bbl_regressions():
+    from warrant import audit
+    # DOI hard-wrapped by LaTeX, ACL-style entry without \newblock, page numbers like 2009.3573
+    bbl = (
+        r"\bibitem[{Cameron and Miller(2015)}]{cameron2015}" "\n"
+        "A.~Colin Cameron and Douglas~L. Miller. 2015. A practitioner's guide to cluster-robust inference.\n"
+        r"\emph{Journal of Human Resources}, 50(2):317--372. doi:10.3368/jhr.50.2." "\n317\n\n"
+        r"\bibitem{s}" "\nB. Succar. 2009. Building information modelling framework: a research and "
+        "delivery foundation for industry stakeholders. Automation in Construction, 18(3):2009.3573.\n"
+    )
+    a, b = audit.parse_bbl(bbl)
+    assert a.doi == "10.3368/jhr.50.2.317"
+    assert a.title == "A practitioner's guide to cluster-robust inference"
+    assert b.arxiv is None and b.title.startswith("Building information modelling framework")

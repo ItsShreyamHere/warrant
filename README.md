@@ -12,13 +12,13 @@ warrant audit 1706.03762          # any arXiv id or URL, or your own refs.bib / 
 ```
 XX  [fake1] Recursive Spectral Gating Improves Long-Context Retrieval in Sparse Mixture Transformers
       no work with this title in OpenAlex or Crossref
-XX  [fake2] Attention is all you need
-      identifier does not exist (the title is real)
+XX  [fake2] Neural Gradient Folding for Self-Supervised Protein Design
+      no work with this title in OpenAlex or Crossref
 
 3 references: 1 verified, 0 unchecked, 2 not found anywhere
 ```
 
-That's a real run on a test `.bib` with two planted fakes.
+That's the format, from a test `.bib` with two planted fakes. A broken DOI on a real paper is reported as "unchecked", never as fake.
 
 Every reference is checked against doi.org, arXiv, OpenAlex and Crossref. The paper's LaTeX source is read in memory and never unpacked to disk. "Not found" means no registry knows the work: check those by hand before accusing anyone. Run it on your own paper before a reviewer does.
 
