@@ -1,0 +1,33 @@
+name: warrant audit
+description: Fail the build when a paper cites a reference that no registry (doi.org, arXiv, OpenAlex, Crossref) has heard of.
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  files:
+    description: Space-separated .bib / .bbl / .tex files to audit
+    required: true
+  fail-on-flag:
+    description: Fail the job when any reference is not found ("true"/"false")
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Audit references
+      shell: bash
+      env:
+        WARRANT_PATH: ${{ github.action_path }}
+        FILES: ${{ inputs.files }}
+        FAIL: ${{ inputs.fail-on-flag }}
+      run: |
+        status=0
+        for f in $FILES; do
+          echo "::group::warrant audit $f"
+          python "$WARRANT_PATH/bin/warrant.py" audit "$f" --all | tee -a "$RUNNER_TEMP/warrant.txt" || status=1
+          echo "::endgroup::"
+        done
+        { echo '## warrant reference audit'; echo '```'; cat "$RUNNER_TEMP/warrant.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$FAIL" = "true" ]; then exit $status; fi

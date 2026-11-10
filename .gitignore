@@ -4,3 +4,4 @@ __pycache__/
 .warrant/
 build/
 dist/
+bench/scan.log

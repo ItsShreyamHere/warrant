@@ -22,6 +22,21 @@ That's a real run on a test `.bib` with two planted fakes.
 
 Every reference is checked against doi.org, arXiv, OpenAlex and Crossref. The paper's LaTeX source is read in memory and never unpacked to disk. "Not found" means no registry knows the work: check those by hand before accusing anyone. Run it on your own paper before a reviewer does.
 
+### In CI, for every paper repo
+
+```yaml
+# .github/workflows/references.yml
+on: [push, pull_request]
+jobs:
+  references:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: <owner>/warrant@v0
+        with:
+          files: refs.bib
+```
+
 ## Then keep it from happening in your own work
 
 warrant is a Claude Code plugin that supervises research sessions. Install it, run `warrant init`, and keep working. From then on:
