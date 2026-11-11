@@ -4,6 +4,7 @@ Quiet by default: with no `.warrant/` record in the project, every hook is a no-
 Run `warrant init` (or `warrant question ...`) to turn a project on.
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -12,7 +13,9 @@ from . import provenance as prov
 from .record import Record, default_path
 
 MAX_LIST = 8
-_WRITERS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+# Claude Code, Codex (apply_patch) and OpenCode (write/edit/patch) file writers
+_WRITERS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "write", "edit", "patch", "multiedit"}
+_PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+)$", re.M)
 _SKIP = {"TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "ExitPlanMode", "EnterPlanMode"}
 
 
@@ -140,16 +143,18 @@ def post_tool(inp: dict, rec: Record) -> dict | None:
     ti, tr = inp.get("tool_input") or {}, inp.get("tool_response")
     if tool in _WRITERS:
         # text Claude writes is not evidence; remember the path so reading it back isn't either
-        path = ti.get("file_path") or ti.get("notebook_path")
-        if path:
-            rec.append("wrote", path=_norm(path), tool=tool)
+        paths = [ti.get("file_path") or ti.get("filePath") or ti.get("notebook_path") or ti.get("path")]
+        paths += _PATCH_FILE.findall(_flatten(ti))  # Codex apply_patch / OpenCode patch bodies
+        for path in filter(None, paths):
+            rec.append("wrote", path=_norm(path.strip()), tool=tool)
         return None
     text = _flatten(ti) + "\n" + _flatten(tr)
     ints_only = False
-    if tool == "Read":
-        label = f"Read: {ti.get('file_path', '')}"
-        ints_only = _norm(ti.get("file_path", "")) in rec.written_paths()
-    elif tool == "Bash":
+    read_path = ti.get("file_path") or ti.get("filePath") or ""
+    if tool in ("Read", "read"):
+        label = f"Read: {read_path}"
+        ints_only = _norm(read_path) in rec.written_paths()
+    elif tool in ("Bash", "bash", "shell", "exec_command"):
         label = f"Bash: {(ti.get('command') or '')[:120]}"
     else:
         label = tool
@@ -161,7 +166,8 @@ def post_tool(inp: dict, rec: Record) -> dict | None:
 def stop(inp: dict, rec: Record) -> dict | None:
     if inp.get("stop_hook_active"):
         return None  # already blocked once this turn; never loop
-    text = final_reply(inp.get("transcript_path") or "")
+    # Codex and the OpenCode adapter pass the reply directly; Claude Code passes a transcript
+    text = inp.get("last_assistant_message") or final_reply(inp.get("transcript_path") or "")
     if not text.strip():
         return None
     problems = []
@@ -209,4 +215,6 @@ def run(name: str, rec: Record | None = None) -> int:
         return 0
     if out:
         print(json.dumps(out))
+    elif name == "stop":
+        print("{}")  # Codex requires JSON on stdout from Stop hooks
     return 0

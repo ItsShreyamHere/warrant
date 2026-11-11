@@ -214,7 +214,7 @@ def _hook(name, rec, inp, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(inp)))
     hooks.run(name, rec)
     out = capsys.readouterr().out
-    return json.loads(out) if out.strip() else None
+    return (json.loads(out) or None) if out.strip() else None  # "{}" = nothing to say
 
 
 def test_hooks_silent_without_record(tmp_path, monkeypatch, capsys):
@@ -481,3 +481,18 @@ def test_statcheck_scan_regressions():
     assert all(x["consistent"] and x["adjusted"] for x in stats.statcheck(txt))
     # ...but the same numbers without any correction stated are still flagged
     assert not stats.statcheck("t(16) = 2.64, p = .125")[0]["consistent"]
+
+
+def test_codex_and_opencode_hook_shapes(rec, tmp_path, monkeypatch, capsys):
+    # Codex Stop passes the reply directly
+    out = _hook("stop", rec, {"last_assistant_message": "Accuracy reached 0.874."}, monkeypatch, capsys)
+    assert out["decision"] == "block" and "0.874" in out["reason"]
+    # Codex apply_patch: the patched file is not evidence when read back
+    patch = "*** Begin Patch\n*** Add File: notes/results.md\n+acc 0.931\n*** End Patch"
+    _hook("post", rec, {"tool_name": "apply_patch", "tool_input": {"command": patch}, "cwd": str(tmp_path)},
+          monkeypatch, capsys)
+    assert any(p.endswith("results.md") for p in rec.written_paths())
+    # OpenCode bash tool output is evidence
+    _hook("post", rec, {"tool_name": "bash", "tool_input": {"command": "python eval.py"},
+                        "tool_response": {"output": "val_acc=0.7781"}}, monkeypatch, capsys)
+    assert checks.untraced_numbers("accuracy 77.81%", rec) == []

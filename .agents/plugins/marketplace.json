@@ -1,0 +1,12 @@
+{
+  "name": "warrant",
+  "interface": { "displayName": "warrant" },
+  "plugins": [
+    {
+      "name": "warrant",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Research"
+    }
+  ]
+}

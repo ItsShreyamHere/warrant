@@ -8,7 +8,8 @@
 
 <a href="https://github.com/ItsShreyamHere/warrant/stargazers"><img src="https://img.shields.io/github/stars/ItsShreyamHere/warrant?style=flat-square&color=1f7a4d" alt="Stars"></a>
 <a href="#install"><img src="https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square" alt="Claude Code plugin"></a>
-<a href="#works-with"><img src="https://img.shields.io/badge/skill-any_Agent_Skills_agent-555?style=flat-square" alt="Agent Skills"></a>
+<a href="#install"><img src="https://img.shields.io/badge/Codex-plugin-111?style=flat-square" alt="Codex plugin"></a>
+<a href="#install"><img src="https://img.shields.io/badge/OpenCode-plugin-555?style=flat-square" alt="OpenCode plugin"></a>
 <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-0-1f7a4d?style=flat-square" alt="Zero dependencies"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1f7a4d?style=flat-square" alt="MIT"></a>
 
@@ -205,21 +206,57 @@ Claude then runs the experiment, or marks the number as an estimate, and fixes t
 
 ## Install
 
+<details open>
+<summary><b>Claude Code</b></summary>
+
 ```bash
-# 1. the plugin
 /plugin marketplace add ItsShreyamHere/warrant
 /plugin install warrant@warrant
+```
+</details>
 
-# 2. in a research project
+<details>
+<summary><b>Codex</b></summary>
+
+```bash
+codex plugin marketplace add ItsShreyamHere/warrant --enable plugins
+codex plugin add warrant@warrant --enable plugins
+```
+
+Turn plugins on for good with `features.plugins = true` in `~/.codex/config.toml`. Then open `/hooks` in Codex once to review and trust warrant's hooks. Codex runs the same hooks as Claude Code: tool outputs are captured, and a reply with an untraced number, a fake citation or a broken statistic is sent back once with the reason.
+</details>
+
+<details>
+<summary><b>OpenCode</b></summary>
+
+```bash
+git clone https://github.com/ItsShreyamHere/warrant && cd warrant
+./scripts/install.sh --opencode            # global (~/.config/opencode)
+./scripts/install.sh --opencode --project  # or just this project (./.opencode)
+```
+
+This installs the skill, the `/warrant-review`, `/warrant-stats`, `/warrant-audit` and `/warrant-init` commands, and a plugin. The plugin captures tool output and checks each finished reply; on a failed check it sends one follow-up prompt with the reason. It supports OpenCode 1.18.29+ and the OpenCode 2 plugin API.
+</details>
+
+Then, in a research project:
+
+```bash
 warrant init "Does label smoothing help on our 5k-example setup?"
 ```
 
-That's it. Hooks stay silent in projects without `warrant init`.
+That's it. Hooks stay silent in projects without `warrant init`. You need Python 3.10+ on macOS, Linux or Windows.
 
 ### Works with
 
-| | Claude Code | Any agent with Agent Skills | Any terminal / CI |
-|---|:---:|:---:|:---:|
+| | Claude Code | Codex | OpenCode | Any Agent Skills agent | Terminal / CI |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Number tracing on every reply | ✅ | ✅ | ✅ | — | — |
+| Live citation + statcheck on every reply | ✅ | ✅ | ✅ | — | — |
+| Skill: review workflow, pre-registration, wording rules | ✅ | ✅ | ✅ | ✅ copy `skills/warrant/` | — |
+| `review` / `stats` / `audit` / `trace` CLI | ✅ | ✅ | ✅ | ✅ | ✅ `pip install warrant-research` |
+| GitHub Action | — | — | — | — | ✅ |
+
+---|:---:|:---:|:---:|
 | Number tracing on every reply (hooks) | ✅ | — | — |
 | Live citation checks on every reply (hooks) | ✅ | — | — |
 | Skill: pre-registration, wording rules, workflow | ✅ | ✅ copy `skills/warrant/` | — |

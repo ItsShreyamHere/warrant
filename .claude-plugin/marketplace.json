@@ -9,7 +9,7 @@
       "name": "warrant",
       "source": "./",
       "description": "Holds your research question, checks every claim against evidence with code, buries refuted ideas.",
-      "version": "0.7.0"
+      "version": "0.8.0"
     }
   ]
 }
