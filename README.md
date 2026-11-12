@@ -256,14 +256,7 @@ That's it. Hooks stay silent in projects without `warrant init`. You need Python
 | `review` / `stats` / `audit` / `trace` CLI | ✅ | ✅ | ✅ | ✅ | ✅ `pip install warrant-research` |
 | GitHub Action | — | — | — | — | ✅ |
 
----|:---:|:---:|:---:|
-| Number tracing on every reply (hooks) | ✅ | — | — |
-| Live citation checks on every reply (hooks) | ✅ | — | — |
-| Skill: pre-registration, wording rules, workflow | ✅ | ✅ copy `skills/warrant/` | — |
-| `audit` / `cites` / `trace` / `report` CLI | ✅ | ✅ | ✅ `pip install warrant-research` |
-| GitHub Action | — | — | ✅ |
-
-The automatic enforcement uses Claude Code hooks. You need Python 3.10+ on macOS, Linux or Windows. The CLI (`pip install warrant-research`) is optional, because the hooks ship with the plugin.
+The automatic checks run as hooks in Claude Code and Codex, and as a plugin in OpenCode.
 
 ---
 
