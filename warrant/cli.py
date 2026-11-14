@@ -354,7 +354,7 @@ def cmd_audit(a, rec):
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="warrant", description="Keep research with Claude honest.")
+    ap = argparse.ArgumentParser(prog="warrant", description="Code-verified research for AI agents: numbers, citations, statistics, live runs.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("init", help="turn warrant on for this project")

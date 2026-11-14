@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "warrant-research"
 version = "0.9.0"
-description = "Keep research with Claude honest: hold the question, check every claim against evidence with code, bury refuted ideas."
+description = "The referee that reads every paper you cite: code-verified numbers, citations, statistics and live experiment checks for Claude Code, Codex and OpenCode."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
