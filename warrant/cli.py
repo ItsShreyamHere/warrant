@@ -279,6 +279,30 @@ def cmd_stats(a, rec):
     return 1 if bad else 0
 
 
+def cmd_watch(a, rec):
+    from .watch import Watch
+    if not rec.exists():
+        rec.create()
+    w = Watch(rec, a.paths, stale=a.stale, wake=a.wake, max_wakes=a.max_wakes)
+    if not a.once:
+        print(f"warrant watch: {len(w.files())} file(s), every {a.interval}s, 0 tokens. Ctrl+C to stop.")
+    try:
+        w.run(a.interval, a.once)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_alerts(a, rec):
+    import json as _json
+    f = rec.dir / "alerts.jsonl"
+    rows = [_json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip() not in ("", "null")]         if f.is_file() else []
+    for r in rows[-a.n:]:
+        print(f"[{r['level'].upper()}] {r['sentinel']}: {r['msg']} ({r['file']})")
+    print(f"{len(rows)} alerts")
+    return 0
+
+
 def cmd_dashboard(a, rec):
     from .dashboard import serve
     if not rec.exists():
@@ -416,6 +440,19 @@ def main(argv=None) -> int:
     s.add_argument("--verify", help="verdicts.json to check against the cards (quotes must be verbatim)")
     s.add_argument("--cards", help="cards.json (default: next to the verdicts file)")
     s.set_defaults(fn=cmd_review)
+
+    s = sub.add_parser("watch", help="sentinels over live experiment logs (NaN, divergence, overfit, crashes...): 0 tokens")
+    s.add_argument("paths", nargs="+", help="log/CSV/JSONL files, folders or globs")
+    s.add_argument("--interval", type=float, default=5)
+    s.add_argument("--once", action="store_true", help="check what is there now and exit")
+    s.add_argument("--stale", type=float, default=600, help="seconds without output before 'run may have died'")
+    s.add_argument("--wake", help="command run with a one-line alert card on stdin for red alerts")
+    s.add_argument("--max-wakes", type=int, default=3, help="wake budget per hour")
+    s.set_defaults(fn=cmd_watch)
+
+    s = sub.add_parser("alerts", help="recent watch alerts")
+    s.add_argument("-n", type=int, default=20)
+    s.set_defaults(fn=cmd_alerts)
 
     s = sub.add_parser("stats", help="recompute every reported p-value (statcheck) and check means (GRIM)")
     s.add_argument("file", help=".md / .txt / .tex")

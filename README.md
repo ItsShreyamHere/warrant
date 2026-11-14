@@ -24,7 +24,7 @@
 
 *Run first. Report second. Cite what exists, and what it actually says.*
 
-**[Install](#install) · [Review a paper](#warrant-review-a-referee-report-in-one-command) · [Live in Claude Code](#what-it-does-inside-claude-code) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
+**[Install](#install) · [Review a paper](#warrant-review-a-referee-report-in-one-command) · [Watch live runs](#warrant-watch-sentinels-on-your-live-runs-at-0-tokens) · [Live in Claude Code](#what-it-does-inside-claude-code) · [How it works](#how-it-works) · [Limits](#limits-stated-plainly)**
 
 <img src="docs/demo.gif" alt="Claude writes up a result with an invented number and a fake DOI; warrant blocks the reply; Claude runs the experiment and rewrites it with every number traced to the run" width="820">
 
@@ -94,6 +94,35 @@ We ran the statistics checks on 851 open-access psychology papers: 2,063 p-value
 The verify output above is a real run on the Transformer paper's citations. The rejected verdict carried a plausible-sounding quote that the cited ByteNet paper never contains. In Claude Code, the skill runs the whole loop: code checks, cards, verdicts, verify. It then writes a referee report where every comment is labelled `[verified by code]`, `[quote-verified]` or `[reviewer judgment]`.
 
 > ⭐ **Reviewing papers is about to get a lot faster.** [Star warrant](https://github.com/ItsShreyamHere/warrant/stargazers) so your co-reviewers find it too.
+
+---
+
+## `warrant watch`: sentinels on your live runs, at 0 tokens
+
+```bash
+warrant watch runs/ --wake "claude -p --max-turns 3"     # or any command; omit --wake to just alert
+```
+
+Plain-code sentinels tail your logs, CSVs and JSONL metrics while experiments run. No model reads your logs.
+
+| sentinel | fires when |
+|---|---|
+| 🔴 `nonfinite` | a metric becomes NaN or inf |
+| 🔴 `crash` | traceback, CUDA OOM, killed, segfault |
+| 🔴 `diverge` | a loss climbs past 3× its best value |
+| 🟡 `overfit` | validation loss rises 4 evals in a row while training loss falls |
+| 🟡 `too_good` | a held-out score ≥ 0.999: check for leakage |
+| 🟡 `plateau` · `spike` · `stale` | no progress in 30 values · a 6-robust-σ jump · the run went silent |
+| 🟡 `refuted` | a pre-registered prediction is already refuted mid-run |
+
+Tokens are spent only when something is wrong. Your agent sees each new alert once, as one ~40-token line on its next turn. `--wake` hands a red alert's card to a command of your choice, capped at `--max-wakes` per hour (default 3). Everything a watched run prints also becomes evidence, so numbers your agent later reports from it trace automatically.
+
+```
+$ warrant watch train.log
+[RED] diverge: loss = 2.9614, more than 3x its best 0.4519 (train.log)
+[RED] nonfinite: loss became nan (train.log)
+[YELLOW] stale: no new output for 3s: the run may have died (train.log)
+```
 
 ---
 
@@ -364,6 +393,7 @@ Locally: `warrant audit refs.bib --badge references.svg`.
 |---|---|
 | `warrant review PAPER` / `--verify verdicts.json` | referee report: code checks + quote-verified evidence cards |
 | `warrant stats FILE` | recompute every p-value (t, F, χ², r, z) and GRIM-check means |
+| `warrant watch PATHS [--wake CMD]` / `warrant alerts` | zero-token sentinels on live experiment logs |
 | `warrant init [QUESTION]` | turn warrant on for this project |
 | `warrant audit DOI \| ARXIV_ID \| FILE` | check every reference in a paper or bibliography |
 | `warrant cites FILE` / `warrant trace FILE` | check a draft's citations / numbers |

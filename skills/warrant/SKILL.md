@@ -82,7 +82,17 @@ Fix a bad citation, or remove it. Do not argue with the hook. Do not launder num
 
 If work drifts from the recorded question, tell the user in one line and ask: is this a new sub-question, or a tangent? Never re-propose a graveyard idea without pre-registering what new result would justify it. `warrant claim` warns when an idea resembles a dead one.
 
-## 7. Reviewing a paper or draft (`warrant review`)
+## 7. Watching live experiments (`warrant watch`)
+
+When you start a run that writes logs, start the sentinels in the background and keep working:
+
+```bash
+warrant watch runs/ &      # 0 tokens: NaN/inf, crashes, divergence, overfitting, leakage, stalls, refuted predictions
+```
+
+New alerts arrive in your context as single `[warrant watch] ...` lines. Act on red ones right away: stop or fix the run, don't wait for it to finish. Mention yellow ones to the user. Don't tail or re-read logs yourself to check on a run; the sentinels already do that.
+
+## 8. Reviewing a paper or draft (`warrant review`)
 
 Use this when the user asks you to review, referee, fact-check or vet a paper. That includes their own draft before submission. **Do not read the cited papers yourself.** warrant does the reading and hands you only what needs judgment.
 

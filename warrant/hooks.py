@@ -86,8 +86,14 @@ def anchor(state: dict, full: bool) -> str:
     return "\n".join(lines)
 
 
+def watch_lines(rec: Record) -> str:
+    """New `warrant watch` alerts, one short line each (~40 tokens), delivered once."""
+    from .watch import card_text, pending
+    return "\n".join(card_text(a) for a in pending(rec))
+
+
 def session_start(inp: dict, rec: Record) -> dict | None:
-    ctx = anchor(rec.state(), full=True)
+    ctx = "\n".join(x for x in (anchor(rec.state(), full=True), watch_lines(rec)) if x)
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}} if ctx else None
 
 
@@ -108,7 +114,10 @@ def drift_note(inp: dict, rec: Record, state: dict) -> str:
     topic = _topic_words(state)
     # the Stop hook saves every agent's last reply, so this works on Claude Code, Codex and OpenCode
     saved = rec.dir / "last_reply.txt"
-    reply = saved.read_text(encoding="utf-8", errors="replace") if saved.is_file() else         final_reply(inp.get("transcript_path") or "", before_prompt=True)
+    if saved.is_file():
+        reply = saved.read_text(encoding="utf-8", errors="replace")
+    else:
+        reply = final_reply(inp.get("transcript_path") or "", before_prompt=True)
     if not topic or len(reply) < 300:
         return ""
     f = rec.dir / "drift.json"
@@ -134,7 +143,7 @@ def prompt_submit(inp: dict, rec: Record) -> dict | None:
         # numbers the user gave are legitimate sources
         rec.observe("user", "your prompt", prompt, prov.source_numbers(prompt), prov.keyed_values(prompt))
     state = rec.state()
-    ctx = "\n".join(x for x in (anchor(state, full=False), drift_note(inp, rec, state)) if x)
+    ctx = "\n".join(x for x in (anchor(state, full=False), drift_note(inp, rec, state), watch_lines(rec)) if x)
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": ctx}} if ctx else None
 
 

@@ -124,3 +124,8 @@ The OpenCode plugin is one file exporting `server()` (V1, OpenCode 1.18.29+) and
 
 - `action.yml`: composite GitHub Action; runs `bin/warrant.py audit <file> --all [--badge]` per file, writes a job summary, fails on any red unless `fail-on-flag: "false"`.
 - `bench/`: `scan_arxiv.py` (reference scan), `scan_stats.py` (arXiv statcheck), `scan_pmc.py` (Europe PMC XML statcheck). Outputs go to gitignored `bench/results/`; summary in `bench/RESULTS.md`.
+
+
+## warrant watch (added v0.9.0)
+
+`warrant/watch.py`: `Watch` tails files/folders/globs (log, txt, csv, jsonl, out) from stored offsets, only complete lines. Sentinels in `check_chunk` / `check_series` / `check_overfit` / `check_predicates`; alerts dedupe by id `sentinel:file:key` and are appended to `.warrant/alerts.jsonl`. `pending()` hands undelivered alerts to the prompt/session hooks (`hooks.watch_lines`), one ~40-token `card_text` line each, delivered once. `--wake` runs a command with the card on stdin, for red alerts only, under `--max-wakes`/hour. Watched chunks are `rec.observe`d, so they count as evidence for number tracing. Tests: `test_watch_*`. Known shortcut: `pending()` rewrites alerts.jsonl while a watcher may append (a rare lost update is possible; switch to SQLite if this matters).

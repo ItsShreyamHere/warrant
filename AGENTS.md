@@ -83,3 +83,8 @@ Codex hooks need one-time trust via `/hooks` in Codex. **Do not run `opencode pl
 - Verified vs. unverified, risks, ranked TODOs: `docs/handoff/STATUS.md`
 - Benchmark numbers and how to reproduce: `bench/RESULTS.md`
 - User-facing docs: `README.md`; agent instructions: `skills/warrant/SKILL.md`
+
+
+## warrant watch (added v0.9.0)
+
+`warrant/watch.py`: `Watch` tails files/folders/globs (log, txt, csv, jsonl, out) from stored offsets, only complete lines. Sentinels in `check_chunk` / `check_series` / `check_overfit` / `check_predicates`; alerts dedupe by id `sentinel:file:key` and are appended to `.warrant/alerts.jsonl`. `pending()` hands undelivered alerts to the prompt/session hooks (`hooks.watch_lines`), one ~40-token `card_text` line each, delivered once. `--wake` runs a command with the card on stdin, for red alerts only, under `--max-wakes`/hour. Watched chunks are `rec.observe`d, so they count as evidence for number tracing. Tests: `test_watch_*`. Known shortcut: `pending()` rewrites alerts.jsonl while a watcher may append (a rare lost update is possible; switch to SQLite if this matters).

@@ -508,3 +508,58 @@ def test_drift_works_without_claude_transcript(rec, monkeypatch, capsys):
         out = _hook("prompt", rec, {"prompt": "next"}, monkeypatch, capsys)
         seen.append("did not touch" in out["hookSpecificOutput"]["additionalContext"])
     assert seen == [False, False, True]
+
+
+# --- warrant watch ---
+
+def _watch(rec, tmp_path, name, text, **kw):
+    from warrant.watch import Watch
+    f = tmp_path / name
+    f.write_text(text)
+    w = Watch(rec, [str(f)], log=lambda *a: None, **kw)
+    return w, f, {a["sentinel"] for a in w.poll()}
+
+
+def test_watch_healthy_run_is_silent(rec, tmp_path):
+    lines = "".join(f"step={i} loss={2.0 * 0.97 ** i:.4f} val_loss={2.1 * 0.975 ** i:.4f} "
+                    f"val_acc={min(0.9, 0.5 + i * 0.004):.3f}\n" for i in range(50))
+    _, _, got = _watch(rec, tmp_path, "train.log", lines)
+    assert got == set()
+
+
+def test_watch_catches_failures(rec, tmp_path):
+    bad = ("step=1 loss=1.0\nstep=2 loss=0.8\nstep=3 loss=0.7\nstep=4 loss=0.6\nstep=5 loss=2.5\n"
+           "step=6 loss=nan\nTraceback (most recent call last):\nRuntimeError: CUDA out of memory\n")
+    _, _, got = _watch(rec, tmp_path, "a.log", bad)
+    assert {"diverge", "nonfinite", "crash"} <= got
+
+
+def test_watch_overfit_leakage_and_jsonl(rec, tmp_path):
+    rows = [{"step": i, "train_loss": 1 - 0.1 * i, "val_loss": 0.5 + 0.05 * i, "test_acc": 1.0} for i in range(6)]
+    _, _, got = _watch(rec, tmp_path, "m.jsonl", "".join(json.dumps(r) + "\n" for r in rows))
+    assert {"overfit", "too_good"} <= got
+
+
+def test_watch_incremental_csv_and_stale(rec, tmp_path):
+    w, f, got = _watch(rec, tmp_path, "m.csv", "step,loss\n1,1.0\n2,0.9\n", stale=0)
+    assert got == set()
+    with f.open("a") as fh:
+        fh.write("3,0.8\n4,0.7\n5,4.0\n")
+    assert "diverge" in {a["sentinel"] for a in w.poll()}
+    assert "stale" in {a["sentinel"] for a in w.poll()}  # no growth since
+
+
+def test_watch_refutes_preregistered_claim_and_alerts_reach_agent(rec, tmp_path, monkeypatch, capsys):
+    cid = claim(rec, "accuracy stays above 0.9")
+    main(["predict", str(cid), '{"metric":"val_acc","op":"lt","of":"absolute","threshold":0.9}'])
+    _, _, got = _watch(rec, tmp_path, "r.log", "val_acc=0.81\n")
+    assert "refuted" in got
+    rec.append("question", text="q", hypothesis=None)
+    capsys.readouterr()  # drop the CLI output printed above
+    out = _hook("prompt", rec, {"prompt": "how is it going"}, monkeypatch, capsys)
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "[warrant watch]" in ctx and "refuted" in ctx
+    out = _hook("prompt", rec, {"prompt": "again"}, monkeypatch, capsys)
+    assert "[warrant watch]" not in out["hookSpecificOutput"]["additionalContext"]  # delivered once
+    # watched output is evidence: the agent can now report 0.81
+    assert checks.untraced_numbers("validation accuracy is 0.81", rec) == []
