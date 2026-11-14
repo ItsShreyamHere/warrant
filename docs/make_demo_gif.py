@@ -90,14 +90,15 @@ def frame(lines, caption):
     return im
 
 
-def main():
+def main(script=None, name="demo.gif"):
+    script = script or SCRIPT
     frames, durations, lines, caption = [], [], [], ""
 
     def snap(ms):
         frames.append(frame(lines, caption))
         durations.append(ms)
 
-    for step in SCRIPT:
+    for step in script:
         kind = step[0]
         if kind == "cap":
             caption = step[1]
@@ -124,7 +125,7 @@ def main():
             snap(step[1] * 100)
         elif kind == "clear":
             lines = []
-    out = Path(__file__).with_name("demo.gif")
+    out = Path(__file__).with_name(name)
     pal = [f.convert("P", palette=Image.ADAPTIVE, colors=64) for f in frames]
     pal[0].save(out, save_all=True, append_images=pal[1:], duration=durations, loop=0, optimize=True)
     print(f"wrote {out} ({out.stat().st_size // 1024} KB, {len(frames)} frames)")

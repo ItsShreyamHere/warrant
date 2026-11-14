@@ -69,6 +69,8 @@ Every number traced to a run or marked `~`. The citation resolves.
 warrant review 1706.03762        # any arXiv paper, arXiv DOI, or your own LaTeX folder
 ```
 
+<img src="docs/review.gif" alt="warrant review reads cited papers, verifies quotes, rejects an invented one, and recomputes a p-value that flips significance" width="760">
+
 What it checks, and who decides:
 
 | check | how | decided by |
@@ -102,6 +104,8 @@ The verify output above is a real run on the Transformer paper's citations. The 
 ```bash
 warrant watch runs/ --wake "claude -p --max-turns 3"     # or any command; omit --wake to just alert
 ```
+
+<img src="docs/watch.gif" alt="warrant watch catches a diverging loss, a NaN and a dead run in a live training log" width="760">
 
 Plain-code sentinels tail your logs, CSVs and JSONL metrics while experiments run. No model reads your logs.
 
