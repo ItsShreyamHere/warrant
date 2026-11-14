@@ -563,3 +563,11 @@ def test_watch_refutes_preregistered_claim_and_alerts_reach_agent(rec, tmp_path,
     assert "[warrant watch]" not in out["hookSpecificOutput"]["additionalContext"]  # delivered once
     # watched output is evidence: the agent can now report 0.81
     assert checks.untraced_numbers("validation accuracy is 0.81", rec) == []
+
+
+def test_broken_checker_install_is_unchecked_not_rejected(tmp_path):
+    """Found on a machine with an elan shim but no Lean toolchain: that must not mark a proof wrong."""
+    from warrant import proofs
+    script = tmp_path / "needs_missing_module.py"
+    script.write_text("import definitely_not_installed_xyz\nassert True\n")
+    assert proofs.check_proof(str(script))["status"] == "yellow"

@@ -58,4 +58,9 @@ def check_proof(path: str, timeout: int = 300) -> dict:
     if r.returncode == 0:
         why = "Lean accepted the proof" if label == "Lean" else "the script's assertions hold"
         return {"status": GREEN, "why": why, "sha": sha}
-    return {"status": RED, "why": f"{label} rejected it: {_first_error(r.stderr + r.stdout)}", "sha": sha}
+    err = r.stderr + r.stdout
+    # a broken install (e.g. elan shim without a toolchain, missing module) says nothing about the proof
+    if re.search(r"no default toolchain|toolchain .* not installed|command not found|ModuleNotFoundError|"
+                 r"unknown package|could not resolve|failed to download", err, re.I):
+        return {"status": YELLOW, "why": f"{label} could not run here: {_first_error(err)}", "sha": sha}
+    return {"status": RED, "why": f"{label} rejected it: {_first_error(err)}", "sha": sha}
