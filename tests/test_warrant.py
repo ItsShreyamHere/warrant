@@ -496,3 +496,15 @@ def test_codex_and_opencode_hook_shapes(rec, tmp_path, monkeypatch, capsys):
     _hook("post", rec, {"tool_name": "bash", "tool_input": {"command": "python eval.py"},
                         "tool_response": {"output": "val_acc=0.7781"}}, monkeypatch, capsys)
     assert checks.untraced_numbers("accuracy 77.81%", rec) == []
+
+
+def test_drift_works_without_claude_transcript(rec, monkeypatch, capsys):
+    """Codex/OpenCode: drift reads the reply the Stop hook saved, not a transcript."""
+    rec.append("question", text="Does label smoothing improve calibration?", hypothesis=None)
+    off = "Here is a long discussion of the office coffee machine and its espresso settings. " * 6
+    seen = []
+    for _ in range(3):
+        _hook("stop", rec, {"last_assistant_message": off}, monkeypatch, capsys)
+        out = _hook("prompt", rec, {"prompt": "next"}, monkeypatch, capsys)
+        seen.append("did not touch" in out["hookSpecificOutput"]["additionalContext"])
+    assert seen == [False, False, True]

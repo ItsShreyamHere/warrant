@@ -106,7 +106,9 @@ def drift_note(inp: dict, rec: Record, state: dict) -> str:
     """Code-only drift check: N substantial replies in a row sharing no topic word with the
     question, hypothesis or claims. Warns once, then resets, so it never nags."""
     topic = _topic_words(state)
-    reply = final_reply(inp.get("transcript_path") or "", before_prompt=True)
+    # the Stop hook saves every agent's last reply, so this works on Claude Code, Codex and OpenCode
+    saved = rec.dir / "last_reply.txt"
+    reply = saved.read_text(encoding="utf-8", errors="replace") if saved.is_file() else         final_reply(inp.get("transcript_path") or "", before_prompt=True)
     if not topic or len(reply) < 300:
         return ""
     f = rec.dir / "drift.json"
@@ -170,6 +172,10 @@ def stop(inp: dict, rec: Record) -> dict | None:
     text = inp.get("last_assistant_message") or final_reply(inp.get("transcript_path") or "")
     if not text.strip():
         return None
+    try:
+        (rec.dir / "last_reply.txt").write_text(text[-20000:], encoding="utf-8")
+    except OSError:
+        pass
     problems = []
     untraced = checks.untraced_numbers(text, rec)
     if untraced:

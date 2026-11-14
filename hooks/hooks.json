@@ -1,16 +1,53 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" session", "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" session",
+            "commandWindows": "python -c \"import os,sys,runpy;sys.argv=['warrant','hook','session'];runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','warrant.py'),run_name='__main__')\"",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" prompt", "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" prompt",
+            "commandWindows": "python -c \"import os,sys,runpy;sys.argv=['warrant','hook','prompt'];runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','warrant.py'),run_name='__main__')\"",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "PostToolUse": [
-      { "matcher": "*", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" post", "timeout": 10 } ] }
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" post",
+            "commandWindows": "python -c \"import os,sys,runpy;sys.argv=['warrant','hook','post'];runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','warrant.py'),run_name='__main__')\"",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" stop", "timeout": 60 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/warrant-hook\" stop",
+            "commandWindows": "python -c \"import os,sys,runpy;sys.argv=['warrant','hook','stop'];runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','warrant.py'),run_name='__main__')\"",
+            "timeout": 60
+          }
+        ]
+      }
     ]
   }
 }

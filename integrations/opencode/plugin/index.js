@@ -13,6 +13,13 @@ const ROOT = process.env.WARRANT_ROOT || "__WARRANT_ROOT__" // set by scripts/in
 const SCRIPT = join(ROOT, "bin", "warrant.py")
 const PYTHONS = process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"]
 const PREFIX = "[warrant]"
+// WARRANT_DEBUG=1 appends plugin events to ~/.warrant-opencode.log (for diagnosing hosts)
+import { appendFileSync } from "node:fs"
+import { homedir } from "node:os"
+function debug(...a) {
+  if (!process.env.WARRANT_DEBUG) return
+  try { appendFileSync(join(homedir(), ".warrant-opencode.log"), new Date().toISOString() + " " + a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ") + "\n") } catch {}
+}
 
 function runOnce(py, name, payload) {
   return new Promise((resolve) => {
@@ -74,6 +81,10 @@ async function server({ client, directory }) {
   const args = new Map() // callID -> tool args (V1 passes them to "before" only)
   const nudged = new Set()
   let anchor = ""
+  let started = false
+  const roles = new Map() // messageID -> role
+  const texts = new Map() // messageID -> Map(partID -> text)
+  const lastAssistant = new Map() // sessionID -> latest assistant messageID
   return {
     "tool.execute.before": async (input, output) => {
       args.set(input.callID, output?.args)
@@ -90,17 +101,46 @@ async function server({ client, directory }) {
       anchor = res?.hookSpecificOutput?.additionalContext || anchor
     },
     "experimental.chat.system.transform": async (_input, output) => {
+      if (!started) {
+        started = true // session-start context once: question, claim tally, graveyard
+        const res = await run("session", { cwd })
+        anchor = res?.hookSpecificOutput?.additionalContext || anchor
+      }
       if (anchor && Array.isArray(output?.system)) output.system.push(anchor)
     },
     event: async ({ event }) => {
+      const props = event?.properties || {}
+      // collect the assistant's text from the stream: no API call needed at idle
+      if (event?.type === "message.updated" && props.info?.id) {
+        roles.set(props.info.id, props.info.role)
+        if (props.info.role === "assistant") lastAssistant.set(props.sessionID || props.info.sessionID, props.info.id)
+        return
+      }
+      if (event?.type === "message.part.updated" && props.part?.type === "text") {
+        const m = props.part.messageID
+        const parts = texts.get(m) || new Map()
+        parts.set(props.part.id, props.part.text || "")
+        texts.set(m, parts)
+        return
+      }
       if (event?.type !== "session.idle") return
-      const sessionID = event.properties?.sessionID
+      const sessionID = props.sessionID
       if (!sessionID) return
       if (nudged.has(sessionID)) return void nudged.delete(sessionID)
-      const res0 = await client.session.messages({ path: { id: sessionID } })
-      const text = lastAssistantText(res0?.data ?? res0)
+      const mid = lastAssistant.get(sessionID)
+      let text = mid && texts.has(mid) ? [...texts.get(mid).values()].join("\n") : ""
+      if (!text) {
+        try {
+          const res0 = await client.session.messages({ path: { id: sessionID } })
+          text = lastAssistantText(res0?.data ?? res0)
+        } catch (e) {
+          debug("messages failed", String(e))
+        }
+      }
+      debug("idle check", sessionID, text.slice(0, 80))
       if (!text) return
       const res = await run("stop", { last_assistant_message: text, cwd })
+      debug("stop result", res)
       if (res?.decision === "block" && res.reason) {
         nudged.add(sessionID)
         await client.session.prompt({ path: { id: sessionID }, body: { parts: [{ type: "text", text: res.reason }] } })
