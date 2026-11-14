@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use warrant in your research, please cite it."
+title: "warrant: code-verified numbers, citations and statistics for research with AI agents"
+authors:
+  - name: "warrant contributors"
+repository-code: "https://github.com/ItsShreyamHere/warrant"
+license: MIT
+version: 0.9.0
+date-released: 2026-11-14
+keywords: [reproducibility, statcheck, citations, peer review, AI agents, metascience]

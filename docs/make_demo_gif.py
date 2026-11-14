@@ -90,8 +90,8 @@ def frame(lines, caption):
     return im
 
 
-def main(script=None, name="demo.gif"):
-    script = script or SCRIPT
+def render(script):
+    """Script -> (frames, durations_ms)."""
     frames, durations, lines, caption = [], [], [], ""
 
     def snap(ms):
@@ -125,6 +125,11 @@ def main(script=None, name="demo.gif"):
             snap(step[1] * 100)
         elif kind == "clear":
             lines = []
+    return frames, durations
+
+
+def main(script=None, name="demo.gif"):
+    frames, durations = render(script or SCRIPT)
     out = Path(__file__).with_name(name)
     pal = [f.convert("P", palette=Image.ADAPTIVE, colors=64) for f in frames]
     pal[0].save(out, save_all=True, append_images=pal[1:], duration=durations, loop=0, optimize=True)
